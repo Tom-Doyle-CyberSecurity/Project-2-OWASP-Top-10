@@ -19,20 +19,16 @@ Dependencies:
 from zapv2 import ZAPv2
 import time
 import os
-
+import sys
 # ========== ZAP API Configuration ==========
-API_KEY = '' # If using API key, insert it here (optional)
-ZAP_ADDRESS = 'http://localhost'
+API_KEY = 'Secure246Key' # If using API key, insert it here (optional)
+ZAP_ADDRESS = 'localhost'
 ZAP_PORT = '8080'
 TARGET = 'http://juice-shop:3000'
 
 # ========== Report Configuration ==========
 REPORT_DIR = 'reports'
 REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.txt')
-
-
-
-zap = ZAPv2(apikey=API_KEY, proxies={'http': f'http://{ZAP_ADDRESS}:{ZAP_PORT}', 'https': f'http://{ZAP_ADDRESS}:{ZAP_PORT}'})
 
 def setup_environment() -> None:
     """
@@ -73,12 +69,16 @@ def spider_target(zap: ZAPv2, target: str) -> None:
     print('Spidering target...')
     scan_id = zap.spider.scan(target)
     while int(zap.spider.status(scan_id)) < 100:
-        print(f'Spider progress: {zap.spider.status(scan_id)}%')
-        time.sleep(1) # Wait for spider to finish
+        progress = zap.spider.status(scan_id)
+        print(f"\rSpider progress: {progress}%", end="")
+        sys.stdout.flush()
+        time.sleep(1)
+    print() # Finish line cleanly
+    print(f"[+] Spider completed: {zap.spider.status(scan_id)}%")
 
 def active_scan(zap: ZAPv2, target: str) -> None:
     """
-    Perform active scanning pphase to identify vulnerabilities.
+    Perform active scanning phase to identify vulnerabilities.
 
     :param zap: Initialized ZAP client
     :param target: Target URL to actively scan
@@ -89,16 +89,14 @@ def active_scan(zap: ZAPv2, target: str) -> None:
     time.sleep(5)
 
     while int(zap.ascan.status(scan_id)) < 100:
-        print(f'Scan progress: {zap.ascan.status(scan_id)}%')
+        progress = zap.ascan.status(scan_id)
+        print(f"\rScan progress: {progress}%", end="")
+        sys.stdout.flush()
         time.sleep(5)
-    print("[+] Active scan progress: {zap.ascan.status(scan_id0}%")
-    time.sleep(5)
-
-    print(f"[+] Active scan progress: {zap.ascan.status(scan_id)}%")
 
 def export_alerts(zap: ZAPv2, report_path: str) -> None:
     """
-    Ecport all alerts discovered into a structured report file.
+    Export all alerts discovered into a structured report file.
 
     :param zap: Initialized ZAP client
     :param report_path: Path to write report file
@@ -106,7 +104,7 @@ def export_alerts(zap: ZAPv2, report_path: str) -> None:
     alerts = zap.core.alerts()
     print(f"[+] Total alerts discovered: {len(alerts)}")
 
-    with open('reports/zap_report.txt', 'w') as f:
+    with open(report_path, 'w') as f:
         for alert in alerts:
             f.write(str(alert) + '\n')
     print(f"[+] Report successfully written: {report_path}")
@@ -125,3 +123,7 @@ def run_zap_scan():
     export_alerts(zap, REPORT_FILE)
 
     print("[+] ZAP scanning workflow completed successfully.")
+
+if __name__ == "__main__":
+    setup_environment()
+    run_zap_scan()
