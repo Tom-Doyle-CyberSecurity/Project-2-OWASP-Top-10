@@ -59,3 +59,7 @@ def run_bandit_scan() -> None:
     # Output summary to terminal
     print(result.stdout)
     print(f"[+] Report saved to: {REPORT_FILE}")
+
+if __name__ == "__main__":
+    ensure_directories()
+    run_bandit_scan()
