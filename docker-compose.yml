@@ -10,3 +10,7 @@ services:
     image: ghcr.io/zaproxy/zaproxy:stable
     ports:
       - "8080:8080"
+    environment:
+      - ZAP_API_KEY=Secure246Key
+    command: >
+      zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.key=Secure246Key -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
