@@ -30,7 +30,7 @@ jobs:
             run: |
               docker-compose up -d
               echo "Waiting for ZAP to be ready..."
-              for i in {1..10}; do
+              for i in {1..30}; do
                 curl -s http://localhost:8080/JSON/core/view/version/ && break
                 sleep 5
               done
