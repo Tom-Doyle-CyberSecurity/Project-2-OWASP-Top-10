@@ -46,7 +46,7 @@ jobs:
                 python scanners/zap_scanner.py
 
           - name: Upload Reports as Artifacts
-            uses: actions/upload-artifact@v3
+            uses: actions/upload-artifact@v4
             with:
                 name: security-reports
                 path: reports/
