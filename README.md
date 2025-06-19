@@ -18,7 +18,7 @@ This project is an automated web application security lab performing:
 
 1. Spin up Docker lab:
     ```bash
-    docker-compose up -d
+    docker compose up -d
     ```
 
 2. Run scans:
