@@ -9,10 +9,6 @@ on:
 jobs:
     security-scan:
         runs-on: ubuntu-latest
-        services:
-            docker:
-                image: docker:24.0.2
-                options: --privileged
         
         steps: 
           - name: Checkout repository
@@ -47,7 +43,7 @@ jobs:
           - name: Run ZAP scanner
             run: |
                 source venv/bin/activate
-                python scanners/bandit_scanner.py
+                python scanners/zap_scanner.py
 
           - name: Upload Reports as Artifacts
             uses: actions/upload-artifact@v3
