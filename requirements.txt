@@ -3,6 +3,5 @@ requests
 python-dotenv
 pydantic
 pytest
-zapv2
 bandit
 python-owsp-zap-v2.4
