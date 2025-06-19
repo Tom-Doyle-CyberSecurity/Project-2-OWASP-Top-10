@@ -34,14 +34,10 @@ jobs:
               done
 
           - name: Run Bandit scanner
-            run: |
-                source venv/bin/activate
-                python scanners/bandit_scanner.py
+            run: python scanners/bandit_scanner.py
 
           - name: Run ZAP scanner
-            run: |
-                source venv/bin/activate
-                python scanners/zap_scanner.py
+            run: python scanners/zap_scanner.py
 
           - name: Upload Reports as Artifacts
             uses: actions/upload-artifact@v4
