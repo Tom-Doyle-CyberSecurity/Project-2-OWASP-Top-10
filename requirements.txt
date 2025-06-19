@@ -4,4 +4,4 @@ python-dotenv
 pydantic
 pytest
 bandit
-python-owsp-zap-v2
+python-owsp-zap-v2.4
