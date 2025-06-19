@@ -1,0 +1,56 @@
+name: Security Workflows
+
+on: 
+    push:
+        branches: [main]
+    pull_request:
+        branches: [main]
+
+jobs:
+    security-scan:
+        runs-on: ubuntu-latest
+        services:
+            docker:
+                image: docker:24.0.2
+                options: --privileged
+        
+        steps: 
+          - name: Checkout repository
+            uses: actions/checkout@v3
+
+          - name: Set up Python 3.12
+            uses: actions/setup-python@v4
+            with:
+              python-version: '3.12'
+
+          - name: Install dependencies
+            run: |
+              python -m venv venv
+              source venv/bin/activate
+              pip install --upgrade pip
+              pip install -r requirements.txt
+
+          - name: Start Juice Shop and Zap in Docker
+            run: |
+              docker-compose up -d
+              echo "Waiting for ZAP to be ready..."
+              for i in {1..10}; do
+                curl -s http://localhost:8080/JSON/core/view/version/ && break
+                sleep 5
+              done
+
+          - name: Run Bandit scanner
+            run: |
+                source venv/bin/activate
+                python scanners/bandit_scanner.py
+
+          - name: Run ZAP scanner
+            run: |
+                source venv/bin/activate
+                python scanners/bandit_scanner.py
+
+          - name: Upload Reports as Artifacts
+            uses: actions/upload-artifact@v3
+            with:
+                name: security-reports
+                path: reports/
