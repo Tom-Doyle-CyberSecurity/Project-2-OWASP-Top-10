@@ -92,7 +92,7 @@ def run_bandit_scan() -> None:
                 summary.write("## [+] Bandit Scan Summary\n")
                 summary.write("**Issues found:** {len(data.get('results', []))}\n\n")
                 severities = [issue["issue_severity"] for issue in data ["results"]]
-                for severity in ["HIGH, "MEDIUM, "LOW"]:
+                for severity in ["HIGH", "MEDIUM", "LOW"]:
                     count = severities.count(severity)
                     summary.write(f"- **{severity.title()}**: {count}\n")
         except Exception as e:
