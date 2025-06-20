@@ -73,7 +73,7 @@ def run_bandit_scan() -> None:
     # === Generate HTML report ===
     try:
         with open(HTML_REPORT_FILE, 'w') as html:
-            html.write("<html><body>h2>Bandit Security Report</h2><ul>")
+            html.write("<html><body><h2>Bandit Security Report</h2><ul>")
             for issue in data.get("results", []):
                 html.write(f"<li><strong>{issue['issue_severity']}:</strong> {issue['issue_text']}"
                     f"(File: {issue['filename']}, Line: {issue['line_number']})</li>"
