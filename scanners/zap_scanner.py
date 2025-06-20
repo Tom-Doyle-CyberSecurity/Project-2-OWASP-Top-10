@@ -31,7 +31,7 @@ TARGET = 'http://juice-shop:3000'
 # ========== Report Configuration ==========
 REPORT_DIR = 'reports'
 REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.txt')
-HTML_REPORT_FILE =os.path.join(REPORT_DIR, 'zap_report.html')
+HTML_REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.html')
 
 def setup_environment() -> None:
     """
@@ -139,7 +139,7 @@ def run_zap_scan():
     access_target(zap, TARGET)
     spider_target(zap, TARGET)
     active_scan(zap, TARGET)
-    export_alerts(zap, REPORT_FILE)
+    export_alerts(zap, REPORT_FILE, HTML_REPORT_FILE)
 
     print("[+] ZAP scanning workflow completed successfully.")
 
