@@ -20,6 +20,8 @@ from zapv2 import ZAPv2
 import time
 import os
 import sys
+import json
+
 # ========== ZAP API Configuration ==========
 API_KEY = 'Secure246Key' # If using API key, insert it here (optional)
 ZAP_ADDRESS = 'localhost'
@@ -29,6 +31,7 @@ TARGET = 'http://juice-shop:3000'
 # ========== Report Configuration ==========
 REPORT_DIR = 'reports'
 REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.txt')
+HTML_REPORT_FILE =os.path.join(REPORT_DIR, 'zap_report.html')
 
 def setup_environment() -> None:
     """
@@ -90,13 +93,14 @@ def active_scan(zap: ZAPv2, target: str) -> None:
 
     while int(zap.ascan.status(scan_id)) < 100:
         progress = zap.ascan.status(scan_id)
-        print(f"\rScan progress: {progress}%", end="")
+        print(f"\r[Active Scan] progress: {progress}%", end="")
         sys.stdout.flush()
         time.sleep(5)
+    print("\n[+] Active scan complete.")
 
-def export_alerts(zap: ZAPv2, report_path: str) -> None:
+def export_alerts(zap: ZAPv2, txt_path: str, html_path: str) -> None:
     """
-    Export all alerts discovered into a structured report file.
+    Export all alerts to both plain text and basic HTML.
 
     :param zap: Initialized ZAP client
     :param report_path: Path to write report file
@@ -104,10 +108,25 @@ def export_alerts(zap: ZAPv2, report_path: str) -> None:
     alerts = zap.core.alerts()
     print(f"[+] Total alerts discovered: {len(alerts)}")
 
-    with open(report_path, 'w') as f:
+    with open(txt_path, 'w') as f:
         for alert in alerts:
-            f.write(str(alert) + '\n')
-    print(f"[+] Report successfully written: {report_path}")
+            f.write(json.dumps(alert, indent=2) + '\n')
+    print(f"[+] Report successfully written: {txt_path}")
+
+    try:
+        with open(html_path, 'w') as html:
+            html.write("<html><body><h2>Zap Security Report<h2><ul>")
+            for alert in alerts:
+                html.write(f"<li><strong>{alert['risk']}</strong>: {alert['alert']}<br>URL: {alert['url']}</li>")
+            html.write("</ul></body></html>")
+    except Exception as e:
+        print(f"[!] Failed to generate HTMl report: {e}")
+
+    # Fail if HIGH risk issues are found
+    high_risk_count = sum(1 for a in alerts if a['risk'] == 'High')
+    if high_risk_count > 0:
+        print(f"[!] {high_risk_count} HIGH risk vulnerabilities found!")
+        sys.exit(1)
 
 def run_zap_scan():
     """
