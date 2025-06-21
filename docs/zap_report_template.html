@@ -1,0 +1,32 @@
+<html>
+    <head>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px;}
+            h1 { color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            .high { background-color: #ffe6e6; }
+            .medium {background-color: #fffbe6; }
+            .low { background-color: #e6f7ff; }
+        </style>
+    </head>
+    <body>
+        <h1>
+            OWASP Top 10 ZAP Findings Report 
+        </h1>
+        <p>
+            Generated from automated scan of <strong>{{TARGET}}</strong>
+        </p>
+        <table>
+            <tr>
+                <th>Risk</th>
+                <th>Issue</th>
+                <th>URL</th>
+                <th>Description</th>
+            </tr>
+            {{ROWS}}
+        </table>
+        <p>Scan completed via automated GitHub workflow</p>
+    </body>
+</html>

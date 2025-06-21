@@ -22,13 +22,16 @@ Dependencies:
 import os
 import subprocess
 import json
+import sys
 from pathlib import Path
+from datetime import datetime
 
 # ========== Configuration ==========
 SOURCE_DIR = "src"
 REPORT_DIR = "reports"
 REPORT_FILE = os.path.join(REPORT_DIR, "bandit_report.json")
 HTML_REPORT_FILE = os.path.join(REPORT_DIR, "bandit_report.html")
+HTML_TEMPLATE_PATH = "docs/bandit_report_template.html"
 
 def ensure_directories() -> None:
     """
@@ -39,7 +42,7 @@ def ensure_directories() -> None:
 def run_bandit_scan() -> None:
     """
     Run Bandit static code analysis on the source directory.
-    Saves output to JSON, prints summary to terminal, and generates a basic HTML report.
+    Saves output to JSON, prints summary to terminal, and generates an HTML report.
     """
     print(f"[+] Running Bandit scan on: {SOURCE_DIR}")
     
@@ -63,43 +66,52 @@ def run_bandit_scan() -> None:
     print(result.stdout)
     print(f"[+] Report saved to: {REPORT_FILE}")
 
-    # Parse JSON output to create a simple HTML report
+    # Generate HTML report from JSON
     try:
         with open(REPORT_FILE, 'r') as json_file:
             data = json.load(json_file)
-    except Exception as e:
-        print(f"[!] Failed to load Badit JSON output: {e}")
 
-    # === Generate HTML report ===
-    try:
-        with open(HTML_REPORT_FILE, 'w') as html:
-            html.write("<html><body><h2>Bandit Security Report</h2><ul>")
-            for issue in data.get("results", []):
-                html.write(f"<li><strong>{issue['issue_severity']}:</strong> {issue['issue_text']}"
-                    f"(File: {issue['filename']}, Line: {issue['line_number']})</li>"
-                )
-            html.write("</ul></body></html>")
-        
-        print(f"[+] HTML report saved to: {HTML_REPORT_FILE}")
-    except Exception as e:
-        print(f"[!] Failed to generate HTML reports: {e}")
+        with open(HTML_TEMPLATE_PATH, 'r') as template_file:
+            template = template_file.read()
 
-    # === GitHub Actions summary (optional)
+        rows = ""
+        for issue in data.get("results", []):
+            severity = issue.get("issue_severity", "UNKNOWN").upper()
+            rows += f"""
+            <tr class="{severity}">
+                <td>{severity}</td>
+                <td>{issue.get('issue_text', 'N/A')}</td>
+                <td>{issue.get('filename', 'N/A')}</td>
+                <td>{issue.get('line_number', 'N/A')}</td>
+            </tr>
+            """
+        output_html = template.replace("{{SOURCE}}", SOURCE_DIR).replace("{{ROWS}}", rows)
+
+        with open(HTML_REPORT_FILE, "w") as out_file:
+            out_file.write(output_html)
+
+        print(f"[+] HTML report generated at: {HTML_REPORT_FILE}")
+
+    except Exception as e:
+        print(f"[!] Failed to generate HTML report: {e}")
+
+
+    # === GitHub Actions summary (optional but recommended)
     step_summary = os.getenv("GITHUB_STEP_SUMMARY")
     if step_summary:
         try:
             with open(step_summary, 'a') as summary:
                 summary.write("## [+] Bandit Scan Summary\n")
-                summary.write("**Issues found:** {len(data.get('results', []))}\n\n")
+                summary.write(f"**Issues found:** {len(data.get('results', []))}\n\n")
                 severities = [issue["issue_severity"] for issue in data ["results"]]
                 for severity in ["HIGH", "MEDIUM", "LOW"]:
                     count = severities.count(severity)
                     summary.write(f"- **{severity.title()}**: {count}\n")
         except Exception as e:
-            print("[!] Failed to write GitHUB summary: {e}")
+            print(f"[!] Failed to write GitHub summary: {e}")
     
     # === Fail CI on high severity issues ===
-    for issue in data.get("Results", []):
+    for issue in data.get("results", []):
         if issue["issue_severity"].upper() == "HIGH":
             print("[!] High severity issues found. Failing CI pipeline.")
             exit(1)

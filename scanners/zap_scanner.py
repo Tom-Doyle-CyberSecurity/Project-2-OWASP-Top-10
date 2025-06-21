@@ -100,29 +100,50 @@ def active_scan(zap: ZAPv2, target: str) -> None:
 
 def export_alerts(zap: ZAPv2, txt_path: str, html_path: str) -> None:
     """
-    Export all alerts to both plain text and basic HTML.
+    Export all alerts to both plain text and styled HTML report.
 
     :param zap: Initialized ZAP client
-    :param report_path: Path to write report file
+    :param txt_path: Path to write JSON report
+    :param html_path: Path to write HTML report
     """
     alerts = zap.core.alerts()
     print(f"[+] Total alerts discovered: {len(alerts)}")
 
+    # Plain text output
     with open(txt_path, 'w') as f:
         for alert in alerts:
             f.write(json.dumps(alert, indent=2) + '\n')
     print(f"[+] Report successfully written: {txt_path}")
 
+    # Load HTML template and inject rows
     try:
-        with open(html_path, 'w') as html:
-            html.write("<html><body><h2>Zap Security Report<h2><ul>")
+        with open("docs/zap_report_template.html", 'r') as template_file:
+            template = template_file.read()
+            rows = ""
+
             for alert in alerts:
-                html.write(f"<li><strong>{alert['risk']}</strong>: {alert['alert']}<br>URL: {alert['url']}</li>")
-            html.write("</ul></body></html>")
+                risk = alert.get('risk', 'Unknown').lower()
+                css_class = risk if risk in ['high', 'medium', 'low'] else ''
+                rows += f"""
+                <tr class="{css_class}">
+                    <td>{alert['risk']}</td>
+                    <td>{alert.get('alert', 'N/A')}</td>
+                    <td>{alert.get('url', 'N/A')}</td>
+                    <td>{alert.get('desc', alert.get('description', ''))}</td>
+                </tr>
+                """
+            
+            # Replace placeholders
+            output_html = template.replace("{{TARGET}}", TARGET).replace("{{ROWS}}", rows)
+
+            with open(html_path, "w") as out_file:
+                out_file.write(output_html)
+            print(f"[+] HTML report generated at: {html_path}")
+
     except Exception as e:
         print(f"[!] Failed to generate HTMl report: {e}")
 
-    # Fail if HIGH risk issues are found
+    # Optionally fail if HIGH risk issues are found
     high_risk_count = sum(1 for a in alerts if a['risk'] == 'High')
     if high_risk_count > 0:
         print(f"[!] {high_risk_count} HIGH risk vulnerabilities found!")
