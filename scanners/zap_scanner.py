@@ -30,7 +30,7 @@ TARGET = 'http://juice-shop:3000'
 
 # ========== Report Configuration ==========
 REPORT_DIR = 'reports'
-REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.txt')
+REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.json')
 HTML_REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.html')
 
 def setup_environment() -> None:
