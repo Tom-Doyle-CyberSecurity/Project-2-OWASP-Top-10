@@ -8,22 +8,15 @@ This project is an automated **DevSecOps security lab** that simulates a secure 
  
 - It enforces policy thresholds and automatically triggers build failures, GitHub issues, and alerting when risks are detected - bringing real-world security maturity to automated development pipelines
 
-# Project 2: WebApp Pentest & Secure Coding
-
-This project is an automated web application security lab performing:
-- OWASP Top 10 vulnerability scanning
-- Secure coding remediation
-- CI/CD pipeline integration for DevSecOps workflows
-
 ## Project Architecture
 
 Component Technology Used
-- Vulnerable target -> OWASP Juice Shop (Docker)
-- Static Analysis (SAST) -> Bandit (Python)
-- Dynamic Analysis (DAST) -> OWASP ZAP (via API & Docker)
-- CI/CD pipeline -> GitHub Actions 
-- Reporting -> Markdown + HTML (auto-generated)
-- Alerting -> Auto-created GitHub Issues
+- Vulnerable target        -> OWASP Juice Shop (Docker)
+- Static Analysis (SAST)   -> Bandit (Python)
+- Dynamic Analysis (DAST)  -> OWASP ZAP (via API & Docker)
+- CI/CD pipeline           -> GitHub Actions 
+- Reporting                -> Markdown + HTML (auto-generated)
+- Alerting                 -> Auto-created GitHub Issues
 
 ## Key Capabilities
 [+] Bandit scans Python code for **Security vulnerabilities** like hardcoded passwords, unsafe functions, etc.
@@ -36,17 +29,10 @@ Component Technology Used
 
 ## Current Security Policy (thresholds)
 
-Scanner: 
-    - Bandit:
-        - High: > 0
-            - Action: [!] Fails CI pipeline
-        - Medium: > 5
-            - Action: [!] Fails CI pipeline
-    - ZAP:
-        - High: > 0
-            - Action: [!] Fails CI pipeline
-        - Medium: > 10
-            - Action: [!] Fails CI pipeline
+| Scanner | High |   Medium  |        Action        |
+| Bandit  | > 0  |  > 5      | [!] Fails CI pipeline|
+| ZAP     | > 0  |  > 10     | [!] Fails CI pipeline|
+|---------|------|-----------|----------------------|
 
 - These thresholds are **configurable in the GitHub Actions YAML** (`.github/workflows/security.yml`).
 
@@ -56,7 +42,7 @@ Scanner:
     
     2. Run scanners locally (optional)
         - python scanners/zap_scanner.py
-        - scanners/bandit_scanner.py
+        - python scanners/bandit_scanner.py
     
     3. Trigger CI/CD pipeline
         - Just push to main or open a pull request
@@ -75,14 +61,15 @@ Scanner:
 
 ## Evolution of the Project
 
-        Milestone         |             Description   
-
-[+] Initial Setup          -> Dokerised Juice Shop, basic scanner integration
-[+] CI/CD integration      -> Added GitHub Actions to automate scanning
-[+] Threshold Enforcement  -> Security policy blocks merges on violations
-[+] Report Generation      -> Markdown + HTML summary reports
-[+] GitHub Issue Alerts    -> High risks trigger automatic GitHub issues
-[+] Future Work            -> Upload findings to dashboards or SIEM integrations
+|          Milestone         |             Description                           |
+|----------------------------|---------------------------------------------------|
+| [+] Initial Setup          | Dokerised Juice Shop, basic scanner integration   |
+| [+] CI/CD integration      | Added GitHub Actions to automate scanning         |
+| [+] Threshold Enforcement  | Security policy blocks merges on violations       |
+| [+] Report Generation      | Markdown + HTML summary reports                   |
+| [+] GitHub Issue Alerts    | High risks trigger automatic GitHub issues        |
+| [+] Future Work            | upload findings to dashboards or SIEM integrations|
+|--------------------------------------------------------------------------------|
 
 
 ## Configurable Variables (Policy Enforcement)
