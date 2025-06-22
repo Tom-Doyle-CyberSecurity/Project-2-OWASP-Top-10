@@ -23,6 +23,7 @@ jobs:
             run: |
               pip install --upgrade pip
               pip install -r requirements.txt
+              pip install jq
 
           - name: Start Juice Shop and Zap in Docker
             run: |
@@ -35,12 +36,72 @@ jobs:
 
           - name: Run Bandit scanner
             run: python scanners/bandit_scanner.py
+          
+          - name: Analyze Bandit Results & Enforce Threshold
+            run: |
+              echo "Parsing bandit_report.json..."
+              HIGH=$(jq '[.results[] | select(.issue_severity == "HIGH")] | length' reports/bandit_report.json)
+              MEDIUM=$(jq '[.results[] | select(.issue_severity == "MEDIUM")] | length' reports/bandit_report.json)
+              echo "HIGH_COUNT=$HIGH" >> $GITHUB_ENV
+              echo "MEDIUM_COUNT=$MEDIUM" >> $GITHUB_ENV
+              echo "High: $HIGH, Medium: $MEDIUM"
+
+              if [ "$HIGH" -gt 0 ] || [ "$MEDIUM" -gt 5 ]; then
+                echo "::error::Security risk threshold breached!"
+                exit 1
+              fi
+
+          - name: Generate Markdown Summary
+            run: |
+              echo "## Bandit Security Summary" > reports/bandit_summary.md
+              jq -r '.results[] | "- [` + .issue_severity + `] \(.filename): \(.issue_text)"' reports/bandit_report.json >> reports/bandit_summary.md
 
           - name: Run ZAP scanner
             run: python scanners/zap_scanner.py
 
+          - name: Analyze ZAP Results & Enforce Threshold
+            run: |
+              echo "Parsing zap_report.json..."
+              ZAP_HIGH=$(jq '[.site[].alerts[] | select(.risk == "High")] | length' reports/zap_report.json)
+              ZAP_MEDIUM=$(jq '[.site[].alerts[] | select(.risk == "Medium")] | length' reports/zap_report.json)
+              echo "ZAP_HIGH=$ZAP_HIGH" >> $GITHUB_ENV
+              echo "ZAP_MEDIUM=$ZAP_MEDIUM" >> $GITHUB_ENV
+              echo "High: $ZAP_HIGH, Medium: $ZAP_MEDIUM"
+
+              if [ "$ZAP_HIGH" -gt 0 ] || [ "$ZAP_MEDIUM" -gt 10 ]; then
+                echo "::error::ZAP security threshold breached!"
+                exit 1
+              fi
+
+          - name: Generate ZAP Markdown Summary
+            run: |
+              echo "## ZAP Security Summary" > reports/zap_summary.md
+              jq -r '.site[].alerts[] | "- [` + .risk + `] \(.alert): \(.desc)"' reports/zap_report.json >> reports/zap_summary.md
+
+          - name: Auto-create GitHub issue if High Risks Found (Bandit or ZAP)
+            if: ${{ env.HIGH_COUNT != '0' || env.ZAP_HIGH != '0' }}
+            run: |
+              TITLE="[!] Security Scan Alert: High-Risk Findings Detected"
+              BODY="### 🚨 Security Scanner Alert%0A"
+
+              if [ "$HIGH_COUNT" -ne 0 ]; then
+                BODY+="**Bandit** detected $HIGH_COUNT high-severity issues.%0AReview the markdown summary: \`reports/bandit_summary.md\`%0A%0A"
+              fi
+
+              if [ "$ZAP_HIGH" -ne 0 ]; then
+                BODY+="**ZAP** detected $ZAP_HIGH high-risk alerts.%0AReview the markdown summary: \`reports/zap_summary.md\`%0A"
+              fi
+
+              gh issue create --title "$TITLE" \
+                      --body "$BODY" \
+                      --label "security"
+            env: 
+            GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+            HIGH_COUNT: ${{ env.HIGH_COUNT }}
+            ZAP_HIGH: ${{ env.ZAP_HIGH }}
+
           - name: Upload Reports as Artifacts
             uses: actions/upload-artifact@v4
             with:
-                name: security-reports
-                path: reports/
+              name: security-reports
+              path: reports/
