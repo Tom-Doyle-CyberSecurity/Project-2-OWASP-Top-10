@@ -29,7 +29,7 @@ Component Technology Used
 
 ## Current Security Policy (thresholds)
 
-|---------------------------------------------------|                        
+                   
 | Scanner | High |   Medium  |        Action        |
 |---------|------|-----------|----------------------|
 | Bandit  | > 0  |  > 5      | [!] Fails CI pipeline|
