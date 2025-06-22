@@ -111,9 +111,7 @@ def export_alerts(zap: ZAPv2, txt_path: str, html_path: str) -> None:
 
     # Plain text output
     with open(txt_path, 'w') as f:
-        for alert in alerts:
-            f.write(json.dumps(alert, indent=2) + '\n')
-    print(f"[+] Report successfully written: {txt_path}")
+        json.dump({ "site": [ { "alerts": alerts } ] }, f, indent=2)
 
     # Load HTML template and inject rows
     try:
