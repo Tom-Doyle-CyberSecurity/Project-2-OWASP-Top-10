@@ -17,16 +17,13 @@ This project is an automated web application security lab performing:
 
 ## Project Architecture
 
---------------------------------------------------------------
-|           Component       |         Technology Used         |
-|-------------------------------------------------------------|
-| Vulnerable target         |  OWASP Juice Shop (Docker)      |
-| Static Analysis (SAST)    |  Bandit (Python)                |
-| Dynamic Analysis (DASt)   |  OWASP ZAP (via API & Docker)   |
-| CI/CD pipeline            | GitHub Actions                  |
-| Reporting                 | Markdown + HTML (auto-generated)|
-| Alerting                  | Auto-created GitHub Issues      |
----------------------------------------------------------------
+Component Technology Used
+- Vulnerable target -> OWASP Juice Shop (Docker)
+- Static Analysis (SAST) -> Bandit (Python)
+- Dynamic Analysis (DAST) -> OWASP ZAP (via API & Docker)
+- CI/CD pipeline -> GitHub Actions 
+- Reporting -> Markdown + HTML (auto-generated)
+- Alerting -> Auto-created GitHub Issues
 
 ## Key Capabilities
 [+] Bandit scans Python code for **Security vulnerabilities** like hardcoded passwords, unsafe functions, etc.
@@ -38,12 +35,18 @@ This project is an automated web application security lab performing:
 - Auto-created **GitHub issues** for high-risk findings
 
 ## Current Security Policy (thresholds)
-|------------------------------------------------------------------------|
-|   Scanner |    High   |   Medium  |            Action                  |
-|------------------------------------------------------------------------|
-| Bandit    |   > 0     |    > 5    | [!] Fails CI pipeline              |
-| ZAP       |   > 0     |    > 10   | [!] Fails CI pipeline              |
-|------------------------------------------------------------------------|
+
+Scanner: 
+    - Bandit:
+        - High: > 0
+            - Action: [!] Fails CI pipeline
+        - Medium: > 5
+            - Action: [!] Fails CI pipeline
+    - ZAP:
+        - High: > 0
+            - Action: [!] Fails CI pipeline
+        - Medium: > 10
+            - Action: [!] Fails CI pipeline
 
 - These thresholds are **configurable in the GitHub Actions YAML** (`.github/workflows/security.yml`).
 
@@ -96,7 +99,7 @@ This project is an automated web application security lab performing:
 - Thresholds can be changed/configured in .github/workflows/security.yml
 
 ## Eample Output - Markdown summary (CI logs)
-[+] Bandit Security Sumary
+[+] Bandit Security Summary
 - [HIGH] /app/secrets.py: Use of insecure function eval()
 - [MEDIUM] /app/utils.py: Use of assert detected
 
