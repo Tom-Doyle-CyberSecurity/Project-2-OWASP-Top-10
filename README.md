@@ -28,8 +28,9 @@ Component Technology Used
 - Auto-created **GitHub issues** for high-risk findings
 
 ## Current Security Policy (thresholds)
-
+                               
 | Scanner | High |   Medium  |        Action        |
+|---------------------------------------------------|
 | Bandit  | > 0  |  > 5      | [!] Fails CI pipeline|
 | ZAP     | > 0  |  > 10     | [!] Fails CI pipeline|
 |---------|------|-----------|----------------------|
