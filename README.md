@@ -74,19 +74,19 @@ Scanner:
         |--zap_report.html
 
 ## Evolution of the Project
-|----------------------------------------------------------------------------------------------|
-|              Milestone         |                   Description                               |
-|----------------------------------------------------------------------------------------------|
-| [+] Initial Setup              |    Dokerised Juice Shop, basic scanner integration          |
-| [+] CI/CD integration          |    Added GitHub Actions to automate scanning                |
-| [+] Threshold Enforcement      |    Security policy blocks merges on violations              |
-| [+] Report Generation          |    Markdown + HTML summary reports                          |
-| [+] GitHub Issue Alerts        |    High risks trigger automatic GitHub issues               |
-| [+] Future Work                |    Upload findings to dashboards or SIEM integrations       |
-|----------------------------------------------------------------------------------------------|
+
+        Milestone         |             Description   
+
+[+] Initial Setup          -> Dokerised Juice Shop, basic scanner integration
+[+] CI/CD integration      -> Added GitHub Actions to automate scanning
+[+] Threshold Enforcement  -> Security policy blocks merges on violations
+[+] Report Generation      -> Markdown + HTML summary reports
+[+] GitHub Issue Alerts    -> High risks trigger automatic GitHub issues
+[+] Future Work            -> Upload findings to dashboards or SIEM integrations
+
 
 ## Configurable Variables (Policy Enforcement)
-|-----------------------|-------------------------------------------------|----------------|
+
 |       Variable        |                   Description                   |     Default    |
 |-----------------------|-------------------------------------------------|----------------|
 | HIGH_COUNT            |   Bandit high-severity issues threshold         |        0       |
@@ -120,27 +120,27 @@ Scanner:
 
 ## Challenges & Lessons Learned
 
-1. Docker & ZAP Integration Failures
+1. **Docker & ZAP Integration Failures**
     - **Challenge** Intially, the ZAP docker container did not respond properly to API calls, causing the scanner to silently fail and skip report generation
     - **Solution** Added a loop with curl health checks to ensure ZAP was ready before launching scans. This ensured the container was fully initialised before API usage.
     **Lesson** In asynchronous service environments (like Docker), readiness checks are essential before execution - especially for API-bound tools like ZAP 
 
-2. Missing Report Failures & Broken Pipelines
+2. **Missing Report Failures & Broken Pipelines**
     - **Challenge** The pipeline failed unexpectedly due to missing JSON reports, (zap_report.json), which were not being generated correctly or read by jq
     - **Solution**  Modified zap_scanner.py to export reports in a structured JSON format ZAP-style ({ "site": [ { "alerts": [...] } ] }), which made them compatible with jq parsing in GitHub Actions.
     - **Lesson** Output formats must be structured to match downstream tooling expectations. Report schema alignment is just as important as generating the report itself
 
-3. Threshold Enforcement & Exit Codes
+3. **Threshold Enforcement & Exit Codes**
     - **Challenge** Even when scans were successful, no meaningful control existed to block merges or notify teams when security issues were found.
     - **Solution** Implemented environment variable checks and exit codes to halt the pipeline when Bandit or ZAP exceeded defined thresholds. Also added auto-generated GitHub issues for visibility.
     - **Lesson** Security automation is only valuable if it enforces policy. Exit codes and thresholds convert passive scanning into proactive enforcement
 
-4. CI Debugging in GitHub Actions
+4. **CI Debugging in GitHub Actions**
     - **Challenge** Debugging GitHub Actions was time-consuming due to unclear output and the inability to interact with running containers.
     - **Solution**  Used extensive inline logging (echo, print, jq) and intermediate Markdown summaries to inspect the scanner's behavior during runtime
     - **Lesson** CI/CD debugging benefits from verbose output and staging artifacts (like .md or .json files) that provide traceability during failures
 
-5. Auto-Creation of GitHub Issues
+5. **Auto-Creation of GitHub Issues**
     - **Challenge** Creating GitHub issues dynamically using CLI (gh) with properly encoded body content, titles, and conditionals  was non-trivial.
     - **Solution** Parsed environment variables, escaped markdown properly with %0A for newlines, and constructed human-readable GitHub issue bodies directly in the workflow YAML
     - **Lesson** Communicating security issues effectively is part of DevSecOps. Automating triage improves response time and bridges developer-security workflows
