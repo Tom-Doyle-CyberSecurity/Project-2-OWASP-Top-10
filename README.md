@@ -15,12 +15,12 @@ This project is an automated **DevSecOps security lab** that simulates a secure 
 ![Owasp Top 10 Diagram](assets/owasp-top-10-diagram.png)
 
 Component Technology Used
-- Vulnerable target        -> OWASP Juice Shop (Docker)
-- Static Analysis (SAST)   -> Bandit (Python)
-- Dynamic Analysis (DAST)  -> OWASP ZAP (via API & Docker)
-- CI/CD pipeline           -> GitHub Actions 
-- Reporting                -> Markdown + HTML (auto-generated)
-- Alerting                 -> Auto-created GitHub Issues
+- **Vulnerable target**        -> OWASP Juice Shop (Docker)
+- **Static Analysis (SAST)**   -> Bandit (Python)
+- **Dynamic Analysis (DAST)**  -> OWASP ZAP (via API & Docker)
+- **CI/CD pipeline**          -> GitHub Actions 
+- **Reporting**                -> Markdown + HTML (auto-generated)
+- **Alerting**               -> Auto-created GitHub Issues
 
 ## Key Capabilities
 [+] Bandit scans Python code for **Security vulnerabilities** like hardcoded passwords, unsafe functions, etc.
