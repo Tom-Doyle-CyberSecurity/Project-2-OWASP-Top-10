@@ -106,6 +106,10 @@ Component Technology Used
     - Security as code embedded in CI/CD
     - Alerting and triaging via GitHub issues
     - Scalable and adaptable for different risk policies or frameworks
+ 
+ ## Project Achievements
+ - Upon running both the Bandit and ZAP scanners indvidually during the testing phase, Juice Shop produced notifications of challenges that have been completed as a result of the scanning
+ - Once automation had been completed through GitHub actions, a styled, colour coded HTML table was produced by the program listing all the vulnerabilities and their severity by colour
 
 ## Challenges & Lessons Learned
 
