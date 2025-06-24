@@ -1,5 +1,5 @@
-# Project-2-webapp-pentest-secure-coding
-Automated DevSecOps Security Lab for OWASP Top 10 Detection, Enforcement, and CI/CD Policy Integration
+# DevSecOps Security Lab for OWASP Top 10 Detection
+Automation, enforcement, and CI/CD Policy Integration
 
 This project is an automated **DevSecOps security lab** that simulates a secure development lifecylce. It integrates:
 - **OWASP Top 10 vulnerability scanning**
