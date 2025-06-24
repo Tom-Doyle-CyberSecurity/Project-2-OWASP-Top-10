@@ -34,7 +34,6 @@ Component Technology Used
 |---------|------|-----------|----------------------|
 | Bandit  | > 0  |  > 5      | [!] Fails CI pipeline|
 | ZAP     | > 0  |  > 10     | [!] Fails CI pipeline|
-|---------|------|-----------|----------------------|
 
 - These thresholds are **configurable in the GitHub Actions YAML** (`.github/workflows/security.yml`).
 
@@ -71,7 +70,7 @@ Component Technology Used
 | [+] Report Generation      | Markdown + HTML summary reports                   |
 | [+] GitHub Issue Alerts    | High risks trigger automatic GitHub issues        |
 | [+] Future Work            | upload findings to dashboards or SIEM integrations|
-|--------------------------------------------------------------------------------|
+
 
 
 ## Configurable Variables (Policy Enforcement)
@@ -83,7 +82,6 @@ Component Technology Used
 | ZAP_HIGH              |   ZAP high-risk alerts threshold                |        0       |
 | ZAP_MEDIUM            |   ZAP medium-risk alerts threshold              |        10      |
 | GH_TOKEN              |   Token used to authorize GitHub issue creation |                |
-|-----------------------|-------------------------------------------------|----------------|
 
 - Thresholds can be changed/configured in .github/workflows/security.yml
 
