@@ -6,7 +6,7 @@ This project is an automated **DevSecOps security lab** that simulates a secure 
 - **secure coding practices with SAST & DAST**
 - **CI/CD pipeline enforcement (GitHub Actions)** to identify and respond to security risks automatically.
  
-- It enforces policy thresholds and automatically triggers build failures, GitHub issues, and alerting when risks are detected - bringing real-world security maturity to automated development pipelines
+- Enforces policy thresholds and automatically triggers build failures, GitHub issues, and alerting when risks are detected - bringing real-world security maturity to automated development pipelines
 
 ## Project Architecture
 
