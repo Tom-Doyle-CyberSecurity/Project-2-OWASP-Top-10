@@ -109,7 +109,7 @@ Component Technology Used
  
  ## Project Achievements
  - Upon running both the Bandit and ZAP scanners indvidually during the testing phase, Juice Shop produced notifications of challenges that have been completed as a result of the scanning
- ![Alt text](assets/diagram.png)
+ ![Juice Shop Scan] (assets/Juice%20Shop%20scan.png)
 
  - Once automation had been completed through GitHub actions, a styled, colour coded HTML table was produced by the program listing all the vulnerabilities and their severity by colour
 
