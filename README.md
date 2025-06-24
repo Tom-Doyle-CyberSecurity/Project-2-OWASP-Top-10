@@ -12,6 +12,8 @@ This project is an automated **DevSecOps security lab** that simulates a secure 
 
 ## Project Architecture
 
+![Owasp Top 10 Diagram](assets/owasp-top-10-diagram.png)
+
 Component Technology Used
 - Vulnerable target        -> OWASP Juice Shop (Docker)
 - Static Analysis (SAST)   -> Bandit (Python)
