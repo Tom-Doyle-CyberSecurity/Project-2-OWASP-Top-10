@@ -1,3 +1,5 @@
+![Owasp Top 10](assets/owasptop-10.png)
+
 # DevSecOps Security Lab for OWASP Top 10 Detection
 Automation, enforcement, and CI/CD Policy Integration
 
