@@ -22,6 +22,7 @@
     "forwardPorts": [3000, 8000],
     "portsAttributes": {
         "3000": { "label": "Juice Shop", "onAutoForward": "openBrowser"},
-        "8000": { "label": "ZAP API", "onAutoForward": "notify"}
+        "8000": { "label": "ZAP API", "onAutoForward": "notify"},
+        "9000": { "label": "Reports", "onAutoForward": "openBrowser"}
     }
 }
