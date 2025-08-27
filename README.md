@@ -3,7 +3,8 @@ Automation, enforcement, and CI/CD Policy Integration
 
 # How to Deploy
 1) run in GitHub Codespaces
-https://refactored-meme-4xr56r64654hjjjq.github.dev/
+[https://refactored-meme-4xr56r64654hjjjq.github.dev/](https://codespaces.new/OWNER/REPO?quickstart=1
+)
 
 2) Wait for the environment to finish starting
  - The project uses a dev container that auto installs Python dependencies and runs docker
