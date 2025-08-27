@@ -5,7 +5,7 @@ services:
     image: bkimminich/juice-shop
     ports:
       - "3000:3000"
-
+    
   zaproxy:
     image: ghcr.io/zaproxy/zaproxy:stable
     ports:
@@ -14,3 +14,15 @@ services:
       - ZAP_API_KEY=Secure246Key
     command: >
       zap.sh -daemon -host 0.0.0.0 -port 8080 -config api.key=Secure246Key -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+      -config api.key=Secure246Key
+      -config api.addrs.addr.name=.* -config api.addrs.addr.regex=true
+      -config api.optionTimeoutInSecs=120
+    healthcheck:
+      # try both JSON path casings; consider ZAP slow-start in Codespaces
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/JSON/core/view/version/ || curl -fsS http://localhost:8080/json/core/view/version/"]
+      interval: 10s
+      timeout: 5s
+      retries: 24
+
+    depends_on:
+      - juice-shop

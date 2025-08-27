@@ -4,19 +4,47 @@ set -euo pipefail
 echo "Bringing back up..."
 docker compose up -d --build
 
-# Wait for Juice Shop (port 3000) to be ready
-echo "Waiting for Juice Shop on :3000..."
+# ---------- Wait for services ----------
+echo "Waiting for Juice Shop on localhost:3000..."
+JUICE_OK=0
 for i in {1..60}; do
-if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
+  if curl -fsS http://localhost:3000 >/dev/null 2>&1; then
     echo "Juice Shop is up at http://localhost:3000"
+    JUICE_OK=1
     break
+  fi
+  sleep 2
+done
+if [ "$JUICE_OK" -ne 1 ]; then
+  echo "Juice Shop did not become ready in time"; exit 1
 fi
-sleep 2
+
+echo "Waiting for ZAP on localhost:8080..."
+ZAP_OK=0
+for i in {1..120}; do   # give it up to ~4 minutes in Codespaces
+  if curl -fsS http://localhost:8080/json/core/view/version/  >/dev/null 2>&1 || \
+     curl -fsS http://localhost:8080/JSON/core/view/version/  >/dev/null 2>&1 || \
+     curl -fsS http://localhost:8080/                        >/dev/null 2>&1 ; then
+    echo "ZAP is up at http://localhost:8080"
+    ZAP_OK=1
+    break
+  fi
+  sleep 2
 done
 
-# ---- Run scanners ---- #
-export TARGET_URL="http://localhost:3000"
-export ZAP_API_BASE="http://localhost:8000"
+if [ "$ZAP_OK" -ne 1 ]; then
+  echo "ZAP did not become ready in time"
+  echo "---- last 150 lines of ZAP logs ----"
+  docker logs --tail=150 project-2-webapp-pentest-secure-coding-zaproxy-1 || true
+  exit 1
+fi
+
+# ---------- Run scanners ----------
+# IMPORTANT:
+# - TARGET_URL must be resolvable/reachable BY THE ZAP CONTAINER.
+#   Use the compose service name for internal container-to-container traffic.
+export TARGET_URL="http://juice-shop:3000"
+export ZAP_API_BASE="http://localhost:8080"
 
 echo "Bandit..."
 python3 scanners/bandit_scanner.py
@@ -24,20 +52,18 @@ python3 scanners/bandit_scanner.py
 echo "Zap..."
 python3 scanners/zap_scanner.py
 
-# ---- Open Reports automatically via browser
+# ---------- Serve reports ----------
 REPORT_DIR="reports"
-REPORT_FILE="zap_report.html"   # or bandit_report.html
+REPORT_FILE="zap_report.html"  # or bandit_report.html
 PORT=9000
 
 # Kill background server on script exit
 trap 'kill $(jobs -p) >/dev/null 2>&1 || true' EXIT
 
 if [ -d "$REPORT_DIR" ]; then
-  echo "🌐 Serving $REPORT_DIR on http://localhost:$PORT ..."
-  # Start a lightweight web server in the background
+  echo "Serving $REPORT_DIR on http://localhost:$PORT ..."
   python3 -m http.server "$PORT" --directory "$REPORT_DIR" >/dev/null 2>&1 &
 
-  # Wait for the Codespaces forwarded URL to be ready
   URL_BASE=""
   for i in {1..30}; do
     URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
@@ -49,11 +75,11 @@ if [ -d "$REPORT_DIR" ]; then
 
   if [ -n "$URL_BASE" ]; then
     REPORT_URL="$URL_BASE/$REPORT_FILE"
-    echo "📄 Report ready: $REPORT_URL"
+    echo "Report ready: $REPORT_URL"
     gp preview "$REPORT_URL" >/dev/null 2>&1 || echo "Open manually: $REPORT_URL"
   else
-    echo "⚠️ Could not resolve Codespaces URL for port $PORT. Open the PORTS panel and click 9000."
+    echo "Could not resolve Codespaces URL for port $PORT. Open the PORTS panel and click 9000."
   fi
 else
-  echo "⚠️ Report directory not found: $REPORT_DIR"
+  echo "Report directory not found: $REPORT_DIR"
 fi
