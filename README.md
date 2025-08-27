@@ -1,6 +1,10 @@
 # DevSecOps Security Lab for OWASP Top 10 Detection
 Automation, enforcement, and CI/CD Policy Integration
 
+# How to Deploy
+run in GitHub Codespaces
+https://refactored-meme-4xr56r64654hjjjq.github.dev/
+
 ![Owasp Top 10](assets/owasp-top-10.png)
 
 This project is an automated **DevSecOps security lab** that simulates a secure development lifecylce. It integrates:
