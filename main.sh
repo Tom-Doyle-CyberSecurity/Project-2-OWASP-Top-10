@@ -64,21 +64,30 @@ if [ -d "$REPORT_DIR" ]; then
   echo "Serving $REPORT_DIR on http://localhost:$PORT ..."
   python3 -m http.server "$PORT" --directory "$REPORT_DIR" >/dev/null 2>&1 &
 
-  URL_BASE=""
-  for i in {1..30}; do
-    URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
-    if [ -n "$URL_BASE" ] && curl -fsS "$URL_BASE" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 1
-  done
+  # Always print a usable local fallback
+  echo "Local fallback: http://127.0.0.1:$PORT/$REPORT_FILE"
 
-  if [ -n "$URL_BASE" ]; then
-    REPORT_URL="$URL_BASE/$REPORT_FILE"
-    echo "Report ready: $REPORT_URL"
-    gp preview "$REPORT_URL" >/dev/null 2>&1 || echo "Open manually: $REPORT_URL"
+  if command -v gp >/dev/null 2>&1; then
+    URL_BASE=""
+    for i in {1..30}; do
+      URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
+      # IMPORTANT: test the file path, not just the root
+      if [ -n "$URL_BASE" ] && curl -fsS "$URL_BASE/$REPORT_FILE" >/dev/null 2>&1; then
+        break
+      fi
+      sleep 1
+    done
+
+    if [ -n "$URL_BASE" ]; then
+      REPORT_URL="$URL_BASE/$REPORT_FILE"
+      echo "Report ready: $REPORT_URL"
+      gp preview "$REPORT_URL" >/devnull 2>&1 || echo "Open manually: $REPORT_URL"
+    else
+      echo "Could not resolve Codespaces URL for port $PORT."
+      echo "Open the PORTS panel, click 9000, and add /$REPORT_FILE to the end."
+    fi
   else
-    echo "Could not resolve Codespaces URL for port $PORT. Open the PORTS panel and click 9000."
+    echo "Codespaces 'gp' not found. Open: http://127.0.0.1:$PORT/$REPORT_FILE"
   fi
 else
   echo "Report directory not found: $REPORT_DIR"
