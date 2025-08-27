@@ -1,18 +1,6 @@
 # DevSecOps Security Lab for OWASP Top 10 Detection
 Automation, enforcement, and CI/CD Policy Integration
 
-# How to Deploy
-1) run in GitHub Codespaces
-[https://refactored-meme-4xr56r64654hjjjq.github.dev/](https://codespaces.new/OWNER/REPO?quickstart=1
-)
-
-2) Wait for the environment to finish starting
- - The project uses a dev container that auto installs Python dependencies and runs docker
- - When it's ready, open the ports panel
-    - 3000: Juice Shop (opens automatically in a browser)
-    - 8080: ZAP API (shows as forwarded)
-    - If you don't see the ports after 1-2 minutes, open a terminal and run: docker compose up -d
-
 ![Owasp Top 10](assets/owasp-top-10.png)
 
 This project is an automated **DevSecOps security lab** that simulates a secure development lifecylce. It integrates:
