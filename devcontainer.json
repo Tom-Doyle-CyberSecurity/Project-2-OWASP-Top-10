@@ -1,28 +1,42 @@
 {
-    "name": "WebApp (Juice Shop) Pentest env (Docker)",
-    "image": "mcr.microsoft.com/devcontainers/python:3.11",
-    "features":  {
-        "ghcr.io/devcontainers/features/docker-in-docker": {}
-
-    },
-    "postCreateCommand": "pip install -r requirements.txt && docker compose up -d",
-    "postStartCommand": "docker compose up -d",
-    "remoteEnv": {
-        "DOCKER_BUILDKIT": "1"
-    },
-    "customizations": {
-        "vscode": {
-            "extensions": [
-                "ms-python.python",
-                "ms-python.vscode-pylance",
-                "ms-azuretools.vscode-docker"
-            ]
-        }
-    },
-    "forwardPorts": [3000, 8000],
-    "portsAttributes": {
-        "3000": { "label": "Juice Shop", "onAutoForward": "openBrowser"},
-        "8000": { "label": "ZAP API", "onAutoForward": "notify"},
-        "9000": { "label": "Reports", "onAutoForward": "openBrowser"}
+  "name": "Webapp Pentest Lab",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.11"
     }
+  },
+
+  // Keep Codespace light on resources
+  "runArgs": ["--cpus=1.5", "--memory=3g"],
+
+  // Forward ports your script uses
+  "forwardPorts": [3000, 8080, 9000],
+  "portsAttributes": {
+    "3000": { "label": "Juice Shop" },
+    "8080": { "label": "ZAP API" },
+    "9000": { "label": "Reports", "visibility": "public", "onAutoForward": "openPreview"}
+  },
+
+  // Ensure Python deps for scanners exist (falls back if no requirements.txt)
+  "postCreateCommand": "bash -lc 'if [ -f requirements.txt ]; then pip3 install -r requirements.txt; else pip3 install bandit python-owasp-zap-v2.4; fi'",
+
+  // Helpful extensions (optional, safe)
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-azuretools.vscode-docker",
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ]
+    }
+  },
+
+  // Good defaults for Codespaces
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
+  "containerEnv": {
+    "PYTHONUNBUFFERED": "1"
+  }
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$0")"
 
 echo "Bringing back up..."
 docker compose up -d --build
@@ -52,43 +53,55 @@ python3 scanners/bandit_scanner.py
 echo "Zap..."
 python3 scanners/zap_scanner.py
 
+# Build the landing page
+python3 scanners/report_generator.py
+
 # ---------- Serve reports ----------
 REPORT_DIR="reports"
-REPORT_FILE="zap_report.html"  # or bandit_report.html
-PORT=9000
 
-# Kill background server on script exit
-trap 'kill $(jobs -p) >/dev/null 2>&1 || true' EXIT
+# serve the dashboard first; fall back if missing
+REPORT_FILE="index.html"
+if [ ! -f "$REPORT_DIR/$REPORT_FILE" ]; then
+  if [ -f "$REPORT_DIR/zap_report.html" ]; then
+    REPORT_FILE="zap_report.html"
+  elif [ -f "$REPORT_DIR/bandit_report.html" ]; then
+    REPORT_FILE="bandit_report.html"
+  else
+    REPORT_FILE=""
+  fi
+fi
+
+PORT=9000
+# keep server alive; only clean up on Ctrl+C / termination
+cleanup() { kill "${SERVER_PID:-}" >/dev/null 2>&1 || true; }
+trap cleanup INT TERM
 
 if [ -d "$REPORT_DIR" ]; then
   echo "Serving $REPORT_DIR on http://localhost:$PORT ..."
-  python3 -m http.server "$PORT" --directory "$REPORT_DIR" >/dev/null 2>&1 &
+  # bind to all interfaces so Codespaces proxy can reach it
+  python3 -m http.server "$PORT" --bind 0.0.0.0 --directory "$REPORT_DIR" >/dev/null 2>&1 &
+  SERVER_PID=$!
 
-  # Always print a usable local fallback
-  echo "Local fallback: http://127.0.0.1:$PORT/$REPORT_FILE"
+  [ -n "$REPORT_FILE" ] && echo "Local fallback: http://127.0.0.1:$PORT/$REPORT_FILE"
 
+  # host helper if present; otherwise synthesize Codespaces URL
+  URL_BASE=""
   if command -v gp >/dev/null 2>&1; then
-    URL_BASE=""
-    for i in {1..30}; do
-      URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
-      # IMPORTANT: test the file path, not just the root
-      if [ -n "$URL_BASE" ] && curl -fsS "$URL_BASE/$REPORT_FILE" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 1
-    done
-
-    if [ -n "$URL_BASE" ]; then
-      REPORT_URL="$URL_BASE/$REPORT_FILE"
-      echo "Report ready: $REPORT_URL"
-      gp preview "$REPORT_URL" >/devnull 2>&1 || echo "Open manually: $REPORT_URL"
-    else
-      echo "Could not resolve Codespaces URL for port $PORT."
-      echo "Open the PORTS panel, click 9000, and add /$REPORT_FILE to the end."
-    fi
-  else
-    echo "Codespaces 'gp' not found. Open: http://127.0.0.1:$PORT/$REPORT_FILE"
+    URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
+  elif [ "${CODESPACES:-false}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
+    DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+    URL_BASE="https://${CODESPACE_NAME}-${PORT}.${DOMAIN}"
   fi
+
+  if [ -n "$URL_BASE" ] && [ -n "$REPORT_FILE" ]; then
+    echo "Report ready: $URL_BASE/$REPORT_FILE"
+    echo "(If it 401/404s, set port $PORT to Public in PORTS and ensure you’re signed into GitHub.)"
+  else
+    echo "Open the PORTS panel, click $PORT, then add /$REPORT_FILE to the end."
+  fi
+
+  echo "Press Ctrl+C to stop the report server."
+  wait "$SERVER_PID"
 else
   echo "Report directory not found: $REPORT_DIR"
 fi
