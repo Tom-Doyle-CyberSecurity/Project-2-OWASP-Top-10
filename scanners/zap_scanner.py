@@ -100,49 +100,71 @@ def active_scan(zap: ZAPv2, target: str) -> None:
 
 def export_alerts(zap: ZAPv2, txt_path: str, html_path: str) -> None:
     """
-    Export all alerts to both plain text and styled HTML report.
+    Export all alerts to both JSON and styled HTML report.
 
     :param zap: Initialized ZAP client
     :param txt_path: Path to write JSON report
     :param html_path: Path to write HTML report
     """
+    import html
+
     alerts = zap.core.alerts()
     print(f"[+] Total alerts discovered: {len(alerts)}")
 
-    # Plain text output
+    # Save JSON output
     with open(txt_path, 'w') as f:
-        json.dump({ "site": [ { "alerts": alerts } ] }, f, indent=2)
+        json.dump({"site": [{"alerts": alerts}]}, f, indent=2)
 
-    # Load HTML template and inject rows
     try:
         with open("docs/zap_report_template.html", 'r') as template_file:
             template = template_file.read()
             rows = ""
 
+            # Map risk strings to CSS classes
+            risk_to_class = {
+                'high': 'high',
+                'medium': 'medium',
+                'low': 'low',
+                'informational': 'info',
+                'info': 'info'
+            }
+
             for alert in alerts:
-                risk = alert.get('risk', 'Unknown').lower()
-                css_class = risk if risk in ['high', 'medium', 'low'] else ''
+                # Normalize risk string
+                risk_display = alert.get('risk', 'Unknown')
+                risk = (risk_display or 'Unknown').strip().lower()
+                css_class = risk_to_class.get(risk, '')
+
+                # Title fallback: prefer "alert", else "name"
+                title = alert.get('alert') or alert.get('name') or 'N/A'
+
+                # Description fallback
+                desc = alert.get('desc') or alert.get('description') or ''
+
+                # Build table row (escaped for HTML safety)
                 rows += f"""
-                <tr class="{css_class}">
-                    <td>{alert['risk']}</td>
-                    <td>{alert.get('alert', 'N/A')}</td>
-                    <td>{alert.get('url', 'N/A')}</td>
-                    <td>{alert.get('desc', alert.get('description', ''))}</td>
+                <tr class="{html.escape(css_class, quote=True)}">
+                    <td><span class="sev-badge">{html.escape(risk_display)}</span></td>
+                    <td>{html.escape(title)}</td>
+                    <td class="url">{html.escape(alert.get('url', 'N/A'))}</td>
+                    <td>{html.escape(desc)}</td>
                 </tr>
                 """
-            
-            # Replace placeholders
+
+            # Replace placeholders in the template
             output_html = template.replace("{{TARGET}}", TARGET).replace("{{ROWS}}", rows)
 
+            # Write HTML file
             with open(html_path, "w") as out_file:
                 out_file.write(output_html)
+
             print(f"[+] HTML report generated at: {html_path}")
 
     except Exception as e:
-        print(f"[!] Failed to generate HTMl report: {e}")
+        print(f"[!] Failed to generate HTML report: {e}")
 
-    # Optionally fail if HIGH risk issues are found
-    high_risk_count = sum(1 for a in alerts if a['risk'] == 'High')
+    # Fail CI if HIGH risk issues found
+    high_risk_count = sum(1 for a in alerts if (a.get('risk') or '').lower() == 'high')
     if high_risk_count > 0:
         print(f"[!] {high_risk_count} HIGH risk vulnerabilities found!")
         sys.exit(1)

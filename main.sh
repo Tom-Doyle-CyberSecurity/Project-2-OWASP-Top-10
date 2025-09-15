@@ -36,14 +36,15 @@ done
 if [ "$ZAP_OK" -ne 1 ]; then
   echo "ZAP did not become ready in time"
   echo "---- last 150 lines of ZAP logs ----"
-  docker logs --tail=150 project-2-webapp-pentest-secure-coding-zaproxy-1 || true
+  # Use your compose service name here (e.g., 'zaproxy'); avoids hard-coded container ids
+  docker compose logs --tail=150 zaproxy || true
   exit 1
 fi
 
 # ---------- Run scanners ----------
 # IMPORTANT:
-# - TARGET_URL must be resolvable/reachable BY THE ZAP CONTAINER.
-#   Use the compose service name for internal container-to-container traffic.
+# - TARGET_URL must be resolvable by the ZAP CONTAINER.
+#   Use the compose service name for container-to-container traffic.
 export TARGET_URL="http://juice-shop:3000"
 export ZAP_API_BASE="http://localhost:8080"
 
@@ -53,55 +54,51 @@ python3 scanners/bandit_scanner.py
 echo "Zap..."
 python3 scanners/zap_scanner.py
 
-# Build the landing page
+# Build the landing page (optional aggregator)
 python3 scanners/report_generator.py
 
 # ---------- Serve reports ----------
 REPORT_DIR="reports"
 
-# serve the dashboard first; fall back if missing
-REPORT_FILE="index.html"
+# Prefer ZAP report; fall back to others
+REPORT_FILE="zap_report.html"
 if [ ! -f "$REPORT_DIR/$REPORT_FILE" ]; then
-  if [ -f "$REPORT_DIR/zap_report.html" ]; then
-    REPORT_FILE="zap_report.html"
+  if   [ -f "$REPORT_DIR/index.html" ]; then
+    REPORT_FILE="index.html"
   elif [ -f "$REPORT_DIR/bandit_report.html" ]; then
     REPORT_FILE="bandit_report.html"
   else
-    REPORT_FILE=""
+    echo "No HTML report found in $REPORT_DIR (expected zap_report.html / index.html / bandit_report.html)"
+    exit 1
   fi
 fi
 
 PORT=9000
-# keep server alive; only clean up on Ctrl+C / termination
 cleanup() { kill "${SERVER_PID:-}" >/dev/null 2>&1 || true; }
 trap cleanup INT TERM
 
-if [ -d "$REPORT_DIR" ]; then
-  echo "Serving $REPORT_DIR on http://localhost:$PORT ..."
-  # bind to all interfaces so Codespaces proxy can reach it
-  python3 -m http.server "$PORT" --bind 0.0.0.0 --directory "$REPORT_DIR" >/dev/null 2>&1 &
-  SERVER_PID=$!
+echo "Serving $REPORT_DIR on http://localhost:$PORT ..."
+# Bind all interfaces so Codespaces proxy can reach it
+python3 -m http.server "$PORT" --bind 0.0.0.0 --directory "$REPORT_DIR" >/dev/null 2>&1 &
+SERVER_PID=$!
 
-  [ -n "$REPORT_FILE" ] && echo "Local fallback: http://127.0.0.1:$PORT/$REPORT_FILE"
+echo "Local fallback: http://127.0.0.1:$PORT/$REPORT_FILE"
 
-  # host helper if present; otherwise synthesize Codespaces URL
-  URL_BASE=""
-  if command -v gp >/dev/null 2>&1; then
-    URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
-  elif [ "${CODESPACES:-false}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
-    DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
-    URL_BASE="https://${CODESPACE_NAME}-${PORT}.${DOMAIN}"
-  fi
-
-  if [ -n "$URL_BASE" ] && [ -n "$REPORT_FILE" ]; then
-    echo "Report ready: $URL_BASE/$REPORT_FILE"
-    echo "(If it 401/404s, set port $PORT to Public in PORTS and ensure you’re signed into GitHub.)"
-  else
-    echo "Open the PORTS panel, click $PORT, then add /$REPORT_FILE to the end."
-  fi
-
-  echo "Press Ctrl+C to stop the report server."
-  wait "$SERVER_PID"
-else
-  echo "Report directory not found: $REPORT_DIR"
+# GitHub Codespaces URL (gp helper or synthesize)
+URL_BASE=""
+if command -v gp >/dev/null 2>&1; then
+  URL_BASE="$(gp url "$PORT" 2>/dev/null || true)"
+elif [ "${CODESPACES:-false}" = "true" ] && [ -n "${CODESPACE_NAME:-}" ]; then
+  DOMAIN="${GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN:-app.github.dev}"
+  URL_BASE="https://${CODESPACE_NAME}-${PORT}.${DOMAIN}"
 fi
+
+if [ -n "$URL_BASE" ]; then
+  echo "Report ready: $URL_BASE/$REPORT_FILE"
+  echo "(If it 401/404s, set port $PORT to Public in the PORTS panel and ensure you’re signed into GitHub.)"
+else
+  echo "Open the PORTS panel, click $PORT, then add /$REPORT_FILE to the end."
+fi
+
+echo "Press Ctrl+C to stop the report server."
+wait "$SERVER_PID"
