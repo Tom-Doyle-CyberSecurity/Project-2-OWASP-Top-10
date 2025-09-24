@@ -158,7 +158,7 @@ def main():
     --text:#111;
   }}
   html,body{{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:#fff;color:var(--text)}}
-  .frame{{max-width:1200px;margin:18px auto;padding:22px;border:8px solid var(--black);box-sizing:border-box;background:#ffffff}}
+  .frame{{max-width:1300px;margin:18px auto;padding:22px;border:8px solid var(--black);box-sizing:border-box;background:#ffffff}}
   h1{{font-size:44px;text-align:center;margin:6px 0 8px;font-weight:900}}
   .subtitle{{text-align:center;color:var(--muted);margin-bottom:22px;font-weight:700}}
   .reports{{display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:start}}
