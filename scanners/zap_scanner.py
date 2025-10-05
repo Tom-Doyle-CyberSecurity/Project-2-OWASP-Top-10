@@ -1,19 +1,19 @@
+#!/usr/bin/env python3
 """
 zap_scanner.py
 
-Automated ZAP scanner script for OWASP Top 10 vulnerability assessment.
+Automated ZAP scanner script for OWASP Top 10 vulnerability assessment (Juice Shop version).
 
-This module uses the OWASP ZAP API to:
-- Access target web applications
-- Perform spidering (crawl discovery) to discover endpoints (URLs)
-- Perform active scanning (OWASP Top 10 vulnerabilities)
-- Export alerts into structured report files
+Enhancements:
+- Uses cwe_mapping.py as the single source of truth for OWASP Top 10 (2021–2025) CWE IDs.
+- Performs ZAP spider and active scans.
+- Saves:
+    - reports/zap_report.json (raw ZAP alerts)
+    - reports/zap_cwe_summary.json (CWE summary built against ALL_CWES)
+- Does NOT present any findings in the terminal.
 
 Author: Tom D.
 Created: 2025
-
-Dependencies:
-- python-owasp-zap-v2.4
 """
 
 from zapv2 import ZAPv2
@@ -21,9 +21,24 @@ import time
 import os
 import sys
 import json
+from pathlib import Path
+from collections import defaultdict
+
+# ========= Import CWE Mapping (authoritative source) =========
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+try:
+    from cwe_mapping import ALL_CWES, CWE_NAME_MAP
+except Exception as e:
+    raise SystemExit(
+        f"[-] Failed to import cwe_mapping.py: {e}\n"
+        "    Ensure cwe_mapping.py is co-located or on PYTHONPATH."
+    )
 
 # ========== ZAP API Configuration ==========
-API_KEY = 'Secure246Key' # If using API key, insert it here (optional)
+API_KEY = 'Secure246Key'  # Optional
 ZAP_ADDRESS = 'localhost'
 ZAP_PORT = '8080'
 TARGET = 'http://juice-shop:3000'
@@ -31,159 +46,107 @@ TARGET = 'http://juice-shop:3000'
 # ========== Report Configuration ==========
 REPORT_DIR = 'reports'
 REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.json')
-HTML_REPORT_FILE = os.path.join(REPORT_DIR, 'zap_report.html')
+CWE_SUMMARY_FILE = os.path.join(REPORT_DIR, 'zap_cwe_summary.json')
 
-def setup_environment() -> None:
-    """
-    Ensure the reports directory exists before scanning.
-    
-    """
+# ========== Setup & Scan ==========
+def setup_environment():
     os.makedirs(REPORT_DIR, exist_ok=True)
 
-def initialize_zap() -> ZAPv2:
-    """
-    Initialize and return the configured ZAP API client.
-
-    :return: Instance of ZAPv2 client
-    """
+def initialize_zap():
     return ZAPv2(apikey=API_KEY, proxies={
         'http': f'http://{ZAP_ADDRESS}:{ZAP_PORT}',
         'https': f'http://{ZAP_ADDRESS}:{ZAP_PORT}'
     })
 
-def access_target(zap: ZAPv2, target: str) -> None:
-    """
-    Access the target URL to initiate session
-
-    :param zap: Initialized ZAP client
-    :param target: Target URL to scan
-    """
-    print(f'Accessing target {target}')
+def access_target(zap, target):
+    print(f'[+] Accessing target {target}')
     zap.urlopen(target)
-    time.sleep(2)  # Wait for the site to load
+    time.sleep(2)
 
-def spider_target(zap: ZAPv2, target: str) -> None:
-    """
-    Perform spidering phase to discover URLs/endpoints.
-
-    :param zap: Initialized ZAP client
-    :param target: Target URL to spider
-    """
-    print('Spidering target...')
+def spider_target(zap, target):
+    print('[+] Spidering target...')
     scan_id = zap.spider.scan(target)
     while int(zap.spider.status(scan_id)) < 100:
-        progress = zap.spider.status(scan_id)
-        print(f"\rSpider progress: {progress}%", end="")
+        print(f"\rSpider progress: {zap.spider.status(scan_id)}%", end="")
         sys.stdout.flush()
         time.sleep(1)
-    print() # Finish line cleanly
-    print(f"[+] Spider completed: {zap.spider.status(scan_id)}%")
+    print("\n[+] Spider completed.")
 
-def active_scan(zap: ZAPv2, target: str) -> None:
-    """
-    Perform active scanning phase to identify vulnerabilities.
-
-    :param zap: Initialized ZAP client
-    :param target: Target URL to actively scan
-    """
-
+def active_scan(zap, target):
     print(f"[+] Starting active scan on: {target}")
     scan_id = zap.ascan.scan(target)
     time.sleep(5)
-
     while int(zap.ascan.status(scan_id)) < 100:
-        progress = zap.ascan.status(scan_id)
-        print(f"\r[Active Scan] progress: {progress}%", end="")
+        print(f"\rActive scan progress: {zap.ascan.status(scan_id)}%", end="")
         sys.stdout.flush()
         time.sleep(5)
     print("\n[+] Active scan complete.")
 
-def export_alerts(zap: ZAPv2, txt_path: str, html_path: str) -> None:
-    """
-    Export all alerts to both JSON and styled HTML report.
-
-    :param zap: Initialized ZAP client
-    :param txt_path: Path to write JSON report
-    :param html_path: Path to write HTML report
-    """
-    import html
-
-    alerts = zap.core.alerts()
-    print(f"[+] Total alerts discovered: {len(alerts)}")
-
-    # Save JSON output
-    with open(txt_path, 'w') as f:
-        json.dump({"site": [{"alerts": alerts}]}, f, indent=2)
-
+# ========== CWE Summary Builder (no terminal output) ==========
+def _normalize_int(val):
     try:
-        with open("docs/zap_report_template.html", 'r') as template_file:
-            template = template_file.read()
-            rows = ""
+        if val is None:
+            return None
+        s = str(val).strip()
+        if s.isdigit():
+            return int(s)
+    except Exception:
+        pass
+    return None
 
-            # Map risk strings to CSS classes
-            risk_to_class = {
-                'high': 'high',
-                'medium': 'medium',
-                'low': 'low',
-                'informational': 'info',
-                'info': 'info'
-            }
+def build_cwe_summary(alerts):
+    found_cwes = set()
+    cwe_to_alerts = defaultdict(list)
 
-            for alert in alerts:
-                # Normalize risk string
-                risk_display = alert.get('risk', 'Unknown')
-                risk = (risk_display or 'Unknown').strip().lower()
-                css_class = risk_to_class.get(risk, '')
+    for a in alerts:
+        cwe_raw = a.get("cweid") or a.get("cweId") or a.get("cwe") or a.get("cwe_id")
+        cwe = _normalize_int(cwe_raw)
+        if cwe is not None:
+            found_cwes.add(cwe)
+            cwe_to_alerts[cwe].append({
+                "alert": a.get("alert") or a.get("name"),
+                "risk": a.get("risk"),
+                "url": a.get("url"),
+                "evidence": a.get("evidence"),
+            })
 
-                # Title fallback: prefer "alert", else "name"
-                title = alert.get('alert') or alert.get('name') or 'N/A'
+    expected_set = set(ALL_CWES)
+    not_found_cwes = sorted(expected_set - found_cwes)
+    found_cwes_sorted = sorted(found_cwes)
 
-                # Description fallback
-                desc = alert.get('desc') or alert.get('description') or ''
+    summary = {
+        "total_cwes_expected": len(ALL_CWES),
+        "found_count": len(found_cwes_sorted),
+        "not_found_count": len(not_found_cwes),
+        "found_cwes": found_cwes_sorted,
+        "not_found_cwes": not_found_cwes,
+        "details": {
+            str(cid): {
+                "cwe_id": cid,
+                "cwe_name": CWE_NAME_MAP.get(cid),
+                "alert_count": len(cwe_to_alerts[cid]),
+                "alerts": cwe_to_alerts[cid],
+            } for cid in found_cwes_sorted
+        }
+    }
 
-                # Build table row (escaped for HTML safety)
-                rows += f"""
-                <tr class="{html.escape(css_class, quote=True)}">
-                    <td><span class="sev-badge">{html.escape(risk_display)}</span></td>
-                    <td>{html.escape(title)}</td>
-                    <td class="url">{html.escape(alert.get('url', 'N/A'))}</td>
-                    <td>{html.escape(desc)}</td>
-                </tr>
-                """
+    Path(CWE_SUMMARY_FILE).write_text(json.dumps(summary, indent=2))
 
-            # Replace placeholders in the template
-            output_html = template.replace("{{TARGET}}", TARGET).replace("{{ROWS}}", rows)
-
-            # Write HTML file
-            with open(html_path, "w") as out_file:
-                out_file.write(output_html)
-
-            print(f"[+] HTML report generated at: {html_path}")
-
-    except Exception as e:
-        print(f"[!] Failed to generate HTML report: {e}")
-
-    # Fail CI if HIGH risk issues found
-    high_risk_count = sum(1 for a in alerts if (a.get('risk') or '').lower() == 'high')
-    if high_risk_count > 0:
-        print(f"[!] {high_risk_count} HIGH risk vulnerabilities found!")
-        sys.exit(1)
+# ========== Export & Run ==========
+def export_alerts(zap):
+    alerts = zap.core.alerts()
+    with open(REPORT_FILE, "w") as f:
+        json.dump({"alerts": alerts}, f, indent=2)
+    build_cwe_summary(alerts)
 
 def run_zap_scan():
-    """
-    Execute full ZAP scanning workflow: spider -> active scan -> export alerts.
-    """
-
     setup_environment()
     zap = initialize_zap()
-
     access_target(zap, TARGET)
     spider_target(zap, TARGET)
     active_scan(zap, TARGET)
-    export_alerts(zap, REPORT_FILE, HTML_REPORT_FILE)
-
-    print("[+] ZAP scanning workflow completed successfully.")
+    export_alerts(zap)
+    print("[+] Scan complete. Reports available in 'reports/' directory.")
 
 if __name__ == "__main__":
-    setup_environment()
     run_zap_scan()

@@ -105,7 +105,7 @@ def main():
     bandit_html_exists = os.path.exists(os.path.join(RD, BANDIT_HTML_DASH))
 
     zap_link_html = (f'<a class="view-btn" href="{html.escape(os.path.join(".", ZAP_HTML_DASH))}" target="_blank">View Full Report</a>'
-                     if zap_html_exists else '<div class="no-report">No ZAP HTML found</div>')
+                 if zap_html_exists else '<div class="no-report">No ZAP HTML found</div>')
 
     bandit_link_html = (f'<a class="view-btn" href="{html.escape(os.path.join(".", BANDIT_HTML_DASH))}" target="_blank">View Full Report</a>'
                         if bandit_html_exists else '<div class="no-report">No Bandit HTML found</div>')

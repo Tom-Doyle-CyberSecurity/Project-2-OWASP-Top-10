@@ -54,24 +54,12 @@ python3 scanners/bandit_scanner.py
 echo "Zap..."
 python3 scanners/zap_scanner.py
 
-# Build the landing page (optional aggregator)
+# Build the landing page and reports
 python3 scanners/report_generator.py
 
 # ---------- Serve reports ----------
 REPORT_DIR="reports"
 INDEX_HTML="$REPORT_DIR/index.html"
-
-# If no index.html but bandit/zap exist, build a tiny landing page
-if [ ! -f "$INDEX_HTML" ]; then
-  {
-    echo "<!doctype html><html><head><meta charset='utf-8'><title>Reports</title></head><body>"
-    echo "<h1>Security Reports</h1><ul>"
-    [ -f "$REPORT_DIR/zap_report.html" ]    && echo "<li><a href='zap_report.html'>OWASP ZAP Findings</a></li>"
-    [ -f "$REPORT_DIR/bandit_report.html" ] && echo "<li><a href='bandit_report.html'>Bandit Report</a></li>"
-    echo "</ul></body></html>"
-  } > "$INDEX_HTML"
-  echo "[+] Auto-generated index.html with links to reports"
-fi
 
 REPORT_FILE="index.html"
 
