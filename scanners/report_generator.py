@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 import os, json, datetime, html, shutil
+from collections import Counter
 
-# ---- Paths (kept your originals; added the dashed variants index.html expects) ----
+# ---- Paths ----
 RD = "reports"
 
 # Original filenames produced by scanners / earlier scripts
@@ -11,12 +12,22 @@ BANDIT_HTML_UNDERSCORE = "bandit_report.html"
 BANDIT_JSON_UNDERSCORE = "bandit_report.json"
 
 # Filenames that index.html links to
-ZAP_HTML_DASH    = "zap-report.html"
+ZAP_HTML_DASH    = "zap-report.html"       # legacy/raw ZAP table (still mirrored)
 BANDIT_HTML_DASH = "bandit-report.html"
+
+# CWE summary inputs/outputs
+ZAP_CWE_JSON     = "zap_cwe_summary.json"  # written by zap_scanner.py
+ZAP_CWE_HTML     = "zap-cwe-summary.html"  # human-friendly CWE table we generate
 
 # Our outputs
 INDEX = os.path.join(RD, "index.html")            # dashboard
 FINDINGS_JSON = os.path.join(RD, "findings.json") # consumed by potential frontend fetch
+
+# Optional CWE name map import (safe if file is colocated)
+try:
+    from cwe_mapping import CWE_NAME_MAP
+except Exception:
+    CWE_NAME_MAP = {}
 
 def jload(path):
     try:
@@ -25,17 +36,43 @@ def jload(path):
     except Exception:
         return None
 
+# ---------- Helpers ----------
+def _normalize_risk(r):
+    if r is None: return None
+    s = str(r).strip().lower()
+    if s in ("informational", "info"): return "Informational"
+    if s == "high": return "High"
+    if s == "medium": return "Medium"
+    if s == "low": return "Low"
+    return None
+
 def zap_summary(data):
-    """Summarise ZAP JSON into totals (High/Medium/Low/Informational)."""
+    """
+    Summarise ZAP JSON into totals (High/Medium/Low/Informational).
+
+    Supports both:
+      - {"alerts": [ ... ]}   (what zap_scanner.py writes)
+      - {"site":[{"alerts":[...]}]}  (older ZAP schema)
+    """
     totals = {"High":0, "Medium":0, "Low":0, "Informational":0}
-    if data:
-        for site in data.get("site", []):
-            for a in site.get("alerts", []):
-                risk_raw = a.get("risk") or a.get("riskcode") or ""
-                risk = (str(risk_raw)).title()
-                if risk not in totals:
-                    risk = "Low"
-                totals[risk] += 1
+    if not data:
+        return totals
+
+    alerts = []
+    if isinstance(data, dict):
+        if "alerts" in data and isinstance(data["alerts"], list):
+            alerts = data["alerts"]
+        elif "site" in data and isinstance(data["site"], list):
+            for site in data["site"]:
+                alerts.extend(site.get("alerts", []))
+
+    for a in alerts:
+        risk = _normalize_risk(a.get("risk") or a.get("riskcode"))
+        if risk is None:
+            # Default unknowns to Low so they’re still counted
+            risk = "Low"
+        totals[risk] += 1
+
     return totals
 
 def bandit_summary(data):
@@ -59,6 +96,108 @@ def safe_copy(src, dst_dir, dst_name):
         return True
     except Exception:
         return False
+
+# ---------- CWE HTML builder ----------
+def _derive_description(alerts, top_k=2):
+    """
+    Derive a concise description for a CWE by taking the most frequent alert names.
+    Falls back to the first alert name, or '—' if none.
+    """
+    names = [ (a.get("alert") or a.get("name") or "").strip() for a in alerts ]
+    names = [n for n in names if n]
+    if not names:
+        return "—"
+    counts = Counter(names).most_common(top_k)
+    return ", ".join(n for n, _ in counts)
+
+def build_zap_cwe_html():
+    """
+    Reads reports/zap_cwe_summary.json and renders a compact HTML table:
+    Columns: CWE ID | Name | Description | High | Medium | Low | Informational | Total
+    """
+    path = os.path.join(RD, ZAP_CWE_JSON)
+    data = jload(path)
+    if not data:
+        return """<html><body><h1>ZAP CWE Summary</h1><p>No CWE summary available.</p></body></html>"""
+
+    details = data.get("details", {})
+    # Build rows with per-CWE severity breakdown
+    rows = []
+    for cid_str, detail in sorted(details.items(), key=lambda kv: int(kv[0])):
+        alerts = detail.get("alerts", []) or []
+        counts = {"High":0, "Medium":0, "Low":0, "Informational":0}
+        for a in alerts:
+            r = _normalize_risk(a.get("risk"))
+            if r is None:
+                r = "Low"
+            counts[r] += 1
+        total = sum(counts.values())
+
+        # Name: prefer mapping; fall back to summary JSON's name; otherwise "Unknown"
+        cwe_id_val = detail.get("cwe_id", cid_str)
+        mapped_name = CWE_NAME_MAP.get(int(cwe_id_val)) if str(cwe_id_val).isdigit() else None
+        name = mapped_name or detail.get("cwe_name") or "Unknown"
+
+        # Description: derived from most frequent alert names for that CWE
+        desc = _derive_description(alerts, top_k=2)
+
+        rows.append(f"""
+        <tr>
+          <td>{html.escape(str(cwe_id_val))}</td>
+          <td>{html.escape(name)}</td>
+          <td>{html.escape(desc)}</td>
+          <td>{counts['High']}</td>
+          <td>{counts['Medium']}</td>
+          <td>{counts['Low']}</td>
+          <td>{counts['Informational']}</td>
+          <td>{total}</td>
+        </tr>
+        """)
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>ZAP CWE Summary</title>
+<style>
+  body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:24px;color:#111}}
+  h1{{margin:0 0 8px 0}}
+  .meta{{color:#666;margin-bottom:16px}}
+  table{{width:100%;border-collapse:collapse}}
+  th,td{{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}}
+  th{{background:#f7f7f7}}
+  tr:nth-child(even){{background:#fafafa}}
+
+  /* colored header cells like your mockup */
+  th.col-high{{background:#d84a4a;color:#fff}}
+  th.col-med{{background:#e7902b;color:#fff}}
+  th.col-low{{background:#4da561;color:#fff}}
+  th.col-info{{background:#bdbdbd;color:#fff}}
+</style>
+</head>
+<body>
+  <h1>ZAP CWE Summary</h1>
+  <div class="meta">Grouped by CWE with severity counts</div>
+  <table>
+    <thead>
+      <tr>
+        <th style="min-width:90px;">CWE ID</th>
+        <th style="min-width:220px;">Name</th>
+        <th style="min-width:320px;">Description</th>
+        <th class="col-high" style="min-width:70px;">High</th>
+        <th class="col-med"  style="min-width:90px;">Medium</th>
+        <th class="col-low"  style="min-width:70px;">Low</th>
+        <th class="col-info" style="min-width:120px;">Informational</th>
+        <th style="min-width:70px;">Total</th>
+      </tr>
+    </thead>
+    <tbody>
+      {''.join(rows)}
+    </tbody>
+  </table>
+</body>
+</html>"""
 
 def main():
     os.makedirs(RD, exist_ok=True)
@@ -95,17 +234,23 @@ def main():
     with open(FINDINGS_JSON, "w", encoding="utf-8") as f:
         json.dump(findings, f, ensure_ascii=False, indent=2)
 
-    # Mirror underscore HTML to dashed names if present
+    # Mirror underscore HTML to dashed names if present (kept for legacy/raw view)
     safe_copy(os.path.join(RD, ZAP_HTML_UNDERSCORE), RD, ZAP_HTML_DASH)
     safe_copy(os.path.join(RD, BANDIT_HTML_UNDERSCORE), RD, BANDIT_HTML_DASH)
 
+    # Build CWE HTML from ZAP CWE summary JSON
+    cwe_html = build_zap_cwe_html()
+    with open(os.path.join(RD, ZAP_CWE_HTML), "w", encoding="utf-8") as f:
+        f.write(cwe_html)
+
     # Build HTML landing page
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    zap_html_exists = os.path.exists(os.path.join(RD, ZAP_HTML_DASH))
+    zap_cwe_exists = os.path.exists(os.path.join(RD, ZAP_CWE_HTML))
     bandit_html_exists = os.path.exists(os.path.join(RD, BANDIT_HTML_DASH))
 
-    zap_link_html = (f'<a class="view-btn" href="{html.escape(os.path.join(".", ZAP_HTML_DASH))}" target="_blank">View Full Report</a>'
-                 if zap_html_exists else '<div class="no-report">No ZAP HTML found</div>')
+    # Point ZAP button to CWE summary table
+    zap_link_html = (f'<a class="view-btn" href="{html.escape(os.path.join(".", ZAP_CWE_HTML))}" target="_blank">View Full Report</a>'
+                 if zap_cwe_exists else '<div class="no-report">No ZAP CWE summary found</div>')
 
     bandit_link_html = (f'<a class="view-btn" href="{html.escape(os.path.join(".", BANDIT_HTML_DASH))}" target="_blank">View Full Report</a>'
                         if bandit_html_exists else '<div class="no-report">No Bandit HTML found</div>')
@@ -131,7 +276,6 @@ def main():
     --text:#111;
   }}
   html,body{{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;background:#fff;color:var(--text)}}
-  /* dotted background grid */
   body::before {{
     content:"";
     position:fixed; inset:0;
@@ -166,11 +310,9 @@ def main():
     <h1 id="main-title">OWASP Top 10 Findings Report</h1>
     <div class="subtitle">Summary</div>
     <p class="summary-text">This report provides an overview of the latest OWASP Top 10 security findings generated from both
-    dynamic and static analysis tools. The ZAP scan found no high-risk issues but flagged 131 moderate risks, plus 256 low-risk
-    and 76 informational findings, indicating several areas for hardening despite no critical threats. Bandit's static code analysis
-    reported only one low-risk issue with no moderate or high-risk findings, suggesting strong coding practices. However, CodeQL 
-    findings via GitHub actions should also be examined. Overall, remediation should focus on the moderate risks from ZAP to further
-    strengthen security posture. Generated: {html.escape(now)}</p>
+    dynamic and static analysis tools. The ZAP scan found no high-risk issues but flagged {ztot.get("Medium",0)} moderate risks, plus {ztot.get("Low",0)} low-risk
+    and {ztot.get("Informational",0)} informational findings. Bandit's static code analysis reported {btot.get("LOW",0)} low-risk issue(s) with no moderate or high-risk findings.
+    Generated: {html.escape(now)}</p>
 
     <div class="columns">
       <!-- ZAP column -->
@@ -207,8 +349,9 @@ def main():
     with open(INDEX, "w", encoding="utf-8") as f:
         f.write(doc)
 
-    print(f"Wrote {INDEX} (ZAP html exists: {zap_html_exists}, Bandit html exists: {bandit_html_exists})")
+    print(f"Wrote {INDEX}")
     print(f"Wrote {FINDINGS_JSON}")
+    print(f"Wrote {os.path.join(RD, ZAP_CWE_HTML)}")
 
 if __name__ == "__main__":
     main()
