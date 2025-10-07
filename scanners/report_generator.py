@@ -19,18 +19,29 @@ BANDIT_HTML_DASH = "bandit-report.html"
 ZAP_CWE_JSON = "zap_cwe_summary.json"      # written by zap_scanner.py
 ZAP_CWE_HTML = "zap-cwe-summary.html"      # human-friendly CWE table we generate
 
-# Bandit styled table output (to match ZAP table look/feel)
+# Bandit CWE-styled table output (to match ZAP table look/feel)
 BANDIT_HTML_STYLED = "bandit-cwe-summary.html"
 
 # Our outputs
-INDEX         = os.path.join(RD, "index.html")            # dashboard
-FINDINGS_JSON = os.path.join(RD, "findings.json")         # machine-friendly counts
+INDEX         = os.path.join(RD, "index.html")    # dashboard
+FINDINGS_JSON = os.path.join(RD, "findings.json") # machine-friendly counts
 
-# Optional CWE name map import (safe if file is colocated)
+# ---------- Optional maps ----------
+# CWE name map (for pretty names when we have numeric CWE ids)
 try:
     from cwe_mapping import CWE_NAME_MAP  # {int cwe_id: "Name"}
 except Exception:
     CWE_NAME_MAP = {}
+
+# Call bandit_cwe_map.py to get mapping
+try:
+    from bandit_cwe_map import BANDIT_TEST_TO_CWE          # same folder, script mode
+except Exception:
+    try:
+        from .bandit_cwe_map import BANDIT_TEST_TO_CWE     # package/module mode
+    except Exception:
+        BANDIT_TEST_TO_CWE = {}  # no inline mapping; table will bucket by TEST:Bxxx if empty
+
 
 # ---------- Utils ----------
 def jload(path):
@@ -64,7 +75,6 @@ def _normalize_risk(r):
 def zap_summary(data):
     """
     Summarise ZAP JSON into totals (High/Medium/Low/Informational).
-
     Supports both:
       - {"alerts": [ ... ]}   (what zap_scanner.py writes)
       - {"site":[{"alerts":[...]}]}  (older ZAP schema)
@@ -82,10 +92,9 @@ def zap_summary(data):
                 alerts.extend(site.get("alerts", []))
 
     for a in alerts:
-        # risk might be 'risk' (label) or 'riskcode' (int/string). We only style by label.
         risk = _normalize_risk(a.get("risk") or a.get("riskcode"))
         if risk is None:
-            risk = "Low"  # default unknowns into Low so counts stay non-empty
+            risk = "Low"
         totals[risk] += 1
 
     return totals
@@ -101,11 +110,12 @@ def bandit_summary(data):
             totals[sev] += 1
     return totals
 
-# ---------- ZAP CWE HTML builder (unchanged look) ----------
+# ---------- Description helper (shared) ----------
 def _derive_description(alerts, top_k=2):
     """
     Derive a concise description for a CWE by taking the most frequent alert names.
     Falls back to the first alert name, or '—' if none.
+    For Bandit, we pass alerts=[{"name": test_name}, ...].
     """
     names = [ (a.get("alert") or a.get("name") or "").strip() for a in alerts ]
     names = [n for n in names if n]
@@ -114,6 +124,7 @@ def _derive_description(alerts, top_k=2):
     counts = Counter(names).most_common(top_k)
     return ", ".join(n for n, _ in counts)
 
+# ---------- ZAP CWE HTML ----------
 def build_zap_cwe_html():
     """
     Reads reports/zap_cwe_summary.json and renders a compact HTML table:
@@ -156,12 +167,114 @@ def build_zap_cwe_html():
         </tr>
         """)
 
+    return _tabular_html(
+        title="ZAP CWE Summary",
+        subtitle="Grouped by CWE with severity counts",
+        rows_html="".join(rows)
+    )
+
+# ---------- Bandit: build a CWE-grouped structure ----------
+def bandit_cwe_summary_structure(data):
+    """
+    Convert Bandit results into a ZAP-like CWE summary structure:
+    {
+      "details": {
+        "<cwe_id or bucket>": {
+          "cwe_id": <int or str>,
+          "cwe_name": <str>,
+          "alerts": [ {"name": <rule/test/issue>, "risk": "High|Medium|Low"} ... ]
+        }, ...
+      }
+    }
+    If a CWE mapping is missing, we fall back to grouping by the Bandit test_id bucket: e.g., "TEST:B105".
+    """
+    details = {}
+    if not data or "results" not in data:
+        return {"details": details}
+
+    for r in data["results"]:
+        test_id   = (r.get("test_id") or "").strip()
+        test_name = (r.get("test_name") or "").strip() or (r.get("issue_text") or "").strip() or "Issue"
+        sev_raw   = (r.get("issue_severity") or "LOW").upper()
+        risk = {"HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}.get(sev_raw, "Low")
+
+        cwe_id = BANDIT_TEST_TO_CWE.get(test_id)
+        bucket_key = str(cwe_id) if cwe_id is not None else f"TEST:{test_id or 'UNKNOWN'}"
+
+        if isinstance(cwe_id, int) or (isinstance(cwe_id, str) and cwe_id.isdigit()):
+            name = CWE_NAME_MAP.get(int(cwe_id), "Unknown")
+        else:
+            # Non-CWE bucket; show the Bandit rule/test as the "name"
+            name = test_name
+
+        entry = details.setdefault(bucket_key, {
+            "cwe_id": cwe_id if cwe_id is not None else bucket_key,
+            "cwe_name": name,
+            "alerts": [],
+        })
+        entry["alerts"].append({"name": test_name, "risk": risk})
+
+    return {"details": details}
+
+# ---------- Bandit CWE HTML (matches ZAP table look) ----------
+def build_bandit_cwe_html():
+    """
+    Reads reports/bandit_report.json and renders an HTML table that MATCHES the ZAP CWE table:
+    Columns: CWE ID | Name | Description | High | Medium | Low | Informational | Total
+    """
+    path = os.path.join(RD, BANDIT_JSON_UNDERSCORE)
+    data = jload(path)
+    if not data:
+        return """<!doctype html><html><body><h1>Bandit Static Code Analysis Summary</h1><p>No results available.</p></body></html>"""
+
+    summary = bandit_cwe_summary_structure(data)
+    details = summary.get("details", {})
+
+    # Build rows in numeric CWE order first, then non-numeric buckets
+    def _sort_key(k):
+        return (0, int(k)) if str(k).isdigit() else (1, k)
+    rows = []
+
+    for key in sorted(details.keys(), key=_sort_key):
+        d = details[key]
+        alerts = d.get("alerts", [])
+        counts = {"High": 0, "Medium": 0, "Low": 0, "Informational": 0}
+        for a in alerts:
+            r = a.get("risk", "Low")
+            counts[r] = counts.get(r, 0) + 1
+        total = sum(counts.values())
+
+        cwe_id = d.get("cwe_id", key)
+        name   = d.get("cwe_name", "Unknown")
+        desc   = _derive_description([{"name": a.get("name","")} for a in alerts], top_k=2)
+
+        rows.append(f"""
+        <tr>
+          <td>{html.escape(str(cwe_id))}</td>
+          <td>{html.escape(str(name))}</td>
+          <td>{html.escape(desc)}</td>
+          <td>{counts['High']}</td>
+          <td>{counts['Medium']}</td>
+          <td>{counts['Low']}</td>
+          <td>{counts['Informational']}</td>
+          <td>{total}</td>
+        </tr>
+        """)
+
+    return _tabular_html(
+        title="Bandit Static Code Analysis Summary",
+        subtitle="Grouped by CWE (or Bandit rule bucket) with severity counts",
+        rows_html="".join(rows)
+    )
+
+# ---------- Shared table chrome (identical look for ZAP/Bandit) ----------
+def _tabular_html(title, subtitle, rows_html):
     return f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>ZAP CWE Summary</title>
+<title>{html.escape(title)}</title>
 <style>
   body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:24px;color:#111}}
   h1{{margin:0 0 8px 0}}
@@ -171,7 +284,7 @@ def build_zap_cwe_html():
   th{{background:#f7f7f7}}
   tr:nth-child(even){{background:#fafafa}}
 
-  /* colored header cells like your mockup */
+  /* colored header cells like the mockup */
   th.col-high{{background:#d84a4a;color:#fff}}
   th.col-med{{background:#e7902b;color:#fff}}
   th.col-low{{background:#4da561;color:#fff}}
@@ -179,8 +292,8 @@ def build_zap_cwe_html():
 </style>
 </head>
 <body>
-  <h1>ZAP CWE Summary</h1>
-  <div class="meta">Grouped by CWE with severity counts</div>
+  <h1>{html.escape(title)}</h1>
+  <div class="meta">{html.escape(subtitle)}</div>
   <table>
     <thead>
       <tr>
@@ -195,89 +308,9 @@ def build_zap_cwe_html():
       </tr>
     </thead>
     <tbody>
-      {''.join(rows)}
+      {rows_html}
     </tbody>
   </table>
-</body>
-</html>"""
-
-# ---------- Bandit HTML builder (styled to match ZAP table) ----------
-def build_bandit_html():
-    """
-    Reads reports/bandit_report.json and renders an HTML table with the SAME visual style
-    as the ZAP CWE Summary table.
-
-    Columns: Severity | Issue | File | Line
-    """
-    path = os.path.join(RD, BANDIT_JSON_UNDERSCORE)
-    data = jload(path)
-    if not data or "results" not in data or not data["results"]:
-        return """<!doctype html><html><body><h1>Bandit Static Code Analysis Report</h1><p>No results available.</p></body></html>"""
-
-    rows = []
-    for res in data["results"]:
-        sev = (res.get("issue_severity") or "LOW").upper()
-        issue = res.get("issue_text") or "—"
-        filename = res.get("filename") or "—"
-        line = res.get("line_number")
-        line = "—" if line is None else str(line)
-
-        rows.append(f"""
-        <tr>
-          <td>{html.escape(sev)}</td>
-          <td>{html.escape(issue)}</td>
-          <td>{html.escape(filename)}</td>
-          <td>{html.escape(line)}</td>
-        </tr>
-        """)
-
-    # Optional totals row (to mirror “Total” spirit). Comment out if not wanted.
-    totals = bandit_summary(data)
-    totals_row = f"""
-      <tr>
-        <td colspan="4" style="font-weight:700;background:#fafafa">
-          Totals — HIGH: {totals.get('HIGH',0)} | MEDIUM: {totals.get('MEDIUM',0)} | LOW: {totals.get('LOW',0)}
-        </td>
-      </tr>
-    """
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Bandit Static Code Analysis Report</title>
-<style>
-  body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;margin:24px;color:#111}}
-  h1{{margin:0 0 8px 0}}
-  .meta{{color:#666;margin-bottom:16px}}
-  table{{width:100%;border-collapse:collapse}}
-  th,td{{border:1px solid #ddd;padding:8px;text-align:left;vertical-align:top}}
-  th{{background:#f7f7f7}}
-  tr:nth-child(even){{background:#fafafa}}
-
-  /* colored header cells to echo ZAP table style */
-  th.col-sev{{background:#bdbdbd;color:#fff}}
-</style>
-</head>
-<body>
-  <h1>Bandit Static Code Analysis Report</h1>
-  <div class="meta">Scanned source: src</div>
-  <table>
-    <thead>
-      <tr>
-        <th class="col-sev" style="min-width:110px;">Severity</th>
-        <th style="min-width:420px;">Issue</th>
-        <th style="min-width:220px;">File</th>
-        <th style="min-width:80px;">Line</th>
-      </tr>
-    </thead>
-    <tbody>
-      {''.join(rows)}
-      {totals_row}
-    </tbody>
-  </table>
-  <p style="margin-top:16px;color:#555;font-weight:600;">Report Generated by GitHub Actions</p>
 </body>
 </html>"""
 
@@ -434,8 +467,8 @@ def main():
     with open(os.path.join(RD, ZAP_CWE_HTML), "w", encoding="utf-8") as f:
         f.write(zap_cwe_html)
 
-    # Build Bandit styled HTML
-    bandit_html = build_bandit_html()
+    # Build Bandit CWE-styled HTML (matches ZAP table)
+    bandit_html = build_bandit_cwe_html()
     with open(os.path.join(RD, BANDIT_HTML_STYLED), "w", encoding="utf-8") as f:
         f.write(bandit_html)
 
