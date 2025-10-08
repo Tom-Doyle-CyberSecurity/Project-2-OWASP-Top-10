@@ -1,4 +1,3 @@
-# SonarQube analysis GitHub Action workflow
 name: SonarQube analysis
 
 on:
