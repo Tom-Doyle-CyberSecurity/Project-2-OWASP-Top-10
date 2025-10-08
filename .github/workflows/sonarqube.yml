@@ -25,7 +25,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}     # for PR decoration
           SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}      # SQ token 
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # e.g., https://sonarqube.Tom-Doyle-CyberSecurity.com
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # SonarQube server URL
         with:
           args: >
             -Dsonar.qualitygate.wait=true          # optional: fail job if QG fails
