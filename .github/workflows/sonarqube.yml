@@ -28,4 +28,4 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # SonarQube server URL
         with:
           args: >
-            -Dsonar.qualitygate.wait=true          # optional: fail job if QG fails
+            -Dsonar.qualitygate.wait=true         
