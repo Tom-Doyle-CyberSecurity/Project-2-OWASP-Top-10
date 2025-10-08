@@ -24,9 +24,8 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}     # for PR decoration
-          SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}      # your SQ token (secret)
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # e.g., https://sonarqube.myorg.com
+          SONAR_TOKEN:  ${{ secrets.SONAR_TOKEN }}      # SQ token 
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }} # e.g., https://sonarqube.Tom-Doyle-CyberSecurity.com
         with:
           args: >
-            -Dsonar.projectKey=YOUR_PROJECT_KEY
             -Dsonar.qualitygate.wait=true          # optional: fail job if QG fails
