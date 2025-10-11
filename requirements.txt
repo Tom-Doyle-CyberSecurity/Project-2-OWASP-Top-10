@@ -4,4 +4,4 @@ python-dotenv
 pydantic
 pytest
 bandit
-python-owasp-zap-v2.4
+python-owasp-zap-v2.4==0.0.14

@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+
+"""
+report_generator.py — Generate HTML dashboard and findings.json from ZAP and Bandit outputs
+- Reads: reports/zap_report.json, reports/zap_cwe_summary.json, reports/bandit_report.json
+- Writes: reports/index.html, reports/findings.json, reports/zap-cwe-summary.html, reports/bandit-cwe-summary.html
+- Copies: reports/zap_report.html → reports/zap-report.html (if exists)
+         reports/bandit_report.html → reports/bandit-report.html (if exists)
+Designed by Tom D.
+Created: 2025
+"""
 import os, json, datetime, html, shutil
 from collections import Counter
 
@@ -186,35 +196,51 @@ def bandit_cwe_summary_structure(data):
         }, ...
       }
     }
-    If a CWE mapping is missing, we fall back to grouping by the Bandit test_id bucket: e.g., "TEST:B105".
+    Falls back to grouping by the Bandit test_id if no CWE mapping exists.
     """
-    details = {}
     if not data or "results" not in data:
-        return {"details": details}
+        return {"details": {}}
 
-    for r in data["results"]:
-        test_id   = (r.get("test_id") or "").strip()
-        test_name = (r.get("test_name") or "").strip() or (r.get("issue_text") or "").strip() or "Issue"
-        sev_raw   = (r.get("issue_severity") or "LOW").upper()
-        risk = {"HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}.get(sev_raw, "Low")
-
-        cwe_id = BANDIT_TEST_TO_CWE.get(test_id)
-        bucket_key = str(cwe_id) if cwe_id is not None else f"TEST:{test_id or 'UNKNOWN'}"
-
-        if isinstance(cwe_id, int) or (isinstance(cwe_id, str) and cwe_id.isdigit()):
-            name = CWE_NAME_MAP.get(int(cwe_id), "Unknown")
-        else:
-            # Non-CWE bucket; show the Bandit rule/test as the "name"
-            name = test_name
+    details = {}
+    for result in data["results"]:
+        test_id = (result.get("test_id") or "").strip()
+        test_name = (
+            (result.get("test_name") or "").strip()
+            or (result.get("issue_text") or "").strip()
+            or "Issue"
+        )
+        risk = normalize_risk(result.get("issue_severity"))
+        cwe_id, bucket_key = resolve_cwe_and_bucket(test_id)
+        cwe_name = resolve_cwe_name(cwe_id, test_name)
 
         entry = details.setdefault(bucket_key, {
             "cwe_id": cwe_id if cwe_id is not None else bucket_key,
-            "cwe_name": name,
+            "cwe_name": cwe_name,
             "alerts": [],
         })
         entry["alerts"].append({"name": test_name, "risk": risk})
 
     return {"details": details}
+
+
+def normalize_risk(severity):
+    """Normalize Bandit severity levels."""
+    sev_raw = (severity or "LOW").upper()
+    return {"HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}.get(sev_raw, "Low")
+
+
+def resolve_cwe_and_bucket(test_id):
+    """Determine the CWE ID and bucket key."""
+    cwe_id = BANDIT_TEST_TO_CWE.get(test_id)
+    bucket_key = str(cwe_id) if cwe_id is not None else f"TEST:{test_id or 'UNKNOWN'}"
+    return cwe_id, bucket_key
+
+
+def resolve_cwe_name(cwe_id, test_name):
+    """Resolve CWE name or fallback to test name."""
+    if isinstance(cwe_id, int) or (isinstance(cwe_id, str) and cwe_id.isdigit()):
+        return CWE_NAME_MAP.get(int(cwe_id), "Unknown")
+    return test_name
 
 # ---------- Bandit CWE HTML (matches ZAP table look) ----------
 def build_bandit_cwe_html():

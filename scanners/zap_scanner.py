@@ -1,216 +1,139 @@
 #!/usr/bin/env python3
 """
-zap_scanner.py
-
-Dynamic scan of OWASP Juice Shop aiming to exercise all OWASP Top 10 (2021)
-categories via broader crawl coverage + full active scan.
-- Classic spider + AJAX spider (fixed status call)
-- Seeds high-value SPA routes and REST endpoints (forms, search, reviews)
-- Waits for passive scanner to finish before exporting
-- Active scan is recursive across discovered URLs
-- Optional auth injection via env (unchanged)
-- Same JSON outputs: reports/zap_report.json and zap_cwe_summary.json
+zap_scanner.py — Orchestrate Full ZAP DAST (classic spider → AJAX spider → active → wait passive)
+- Does NOT start/stop Docker or Juice Shop; main.sh owns lifecycle.
+- Reads configuration from environment (with optional vars.py fallback).
+- Exports: reports/zap_report.json and reports/zap_cwe_summary.json
 """
-
 import os, sys, json, time
 from pathlib import Path
 from collections import defaultdict
 from zapv2 import ZAPv2
+from urllib.parse import urlparse
 
-# ========= CWE mapping (unchanged) =========
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+def _load_api_key():
+    """Safely load ZAP API key from env or untracked vars.py."""
+    key = os.getenv("ZAP_API_KEY")
+    if key:
+        return key
+    try:
+        from vars import API_KEY
+        return API_KEY
+    except ImportError:
+        print("[~] No API key found (vars.py missing or not set). Proceeding without authentication.")
+        return ""
 
-try:
-    from cwe_mapping import ALL_CWES, CWE_NAME_MAP
-except Exception as e:
-    raise SystemExit(f"[-] Failed to import cwe_mapping.py: {e}")
+# ---- config from env ----
+TARGET       = os.getenv("TARGET_URL", "http://juice-shop:3000")
+ZAP_BASE     = os.getenv("ZAP_API_BASE", "http://localhost:8080")
+ZAP_API_KEY  = _load_api_key()
 
-# ========= ZAP settings (unchanged connection bits) =========
-API_KEY     = 'Secure246Key'
-ZAP_ADDRESS = 'localhost'
-ZAP_PORT    = '8080'
-TARGET      = 'http://juice-shop:3000'
-
+# reports
 REPORT_DIR        = 'reports'
 REPORT_FILE       = os.path.join(REPORT_DIR, 'zap_report.json')
 CWE_SUMMARY_FILE  = os.path.join(REPORT_DIR, 'zap_cwe_summary.json')
 
-AUTH_HEADER = os.getenv("AUTH_HEADER")  # e.g. "Authorization: Bearer <jwt>"
-AUTH_COOKIE = os.getenv("AUTH_COOKIE")  # e.g. "token=<jwt>; Path=/;"
+# CWE mapping
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+from cwe_mapping import ALL_CWES, CWE_NAME_MAP  # noqa: E402
 
-# ========= Setup =========
-def setup_environment():
-    os.makedirs(REPORT_DIR, exist_ok=True)
+# helpers
+from spider_scan import run_spider            # noqa: E402
+from ajax_scan   import run_ajax              # noqa: E402
+from active      import run_active            # noqa: E402
+from passive     import run_passive
 
-def initialize_zap():
-    return ZAPv2(
-        apikey=API_KEY,
-        proxies={
-            'http':  f'http://{ZAP_ADDRESS}:{ZAP_PORT}',
-            'https': f'http://{ZAP_ADDRESS}:{ZAP_PORT}',
-        }
-    )
+AUTH_HEADER = os.getenv("AUTH_HEADER")  # "Authorization: Bearer <jwt>"
+AUTH_COOKIE = os.getenv("AUTH_COOKIE")  # "token=<jwt>; Path=/;"
 
-def wait_for_zap(zap, retries=8, delay=3):
-    for i in range(retries):
+def _mkdirs():
+    Path(REPORT_DIR).mkdir(parents=True, exist_ok=True)
+
+from urllib.parse import urlparse
+
+def _zap_client():
+    # Make sure shell proxies don't hijack localhost traffic
+    for v in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+        os.environ.pop(v, None)
+    os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1")
+
+    parts = urlparse(ZAP_BASE)  # e.g. http://localhost:8080
+    host_url = f"{parts.scheme}://{parts.hostname}"
+    port = parts.port or 8080
+    base_for_proxy = f"{host_url}:{port}"
+
+    # Try modern client signature first; fall back to legacy proxies signature
+    try:
+        # works with 'zaproxy' package
+        zap = ZAPv2(apikey=ZAP_API_KEY, zapurl=host_url, port=port)
+    except TypeError:
+        # works with legacy 'python-owasp-zap-v2.4==0.0.14'
+        zap = ZAPv2(apikey=ZAP_API_KEY, proxies={"http": base_for_proxy, "https": base_for_proxy})
+
+    # Wait until ZAP API is responsive
+    for i in range(10):
         try:
-            v = zap.core.version
-            if v:
-                print(f"[+] Connected to ZAP {v}")
-                return
+            version = zap.core.version
+            if version:
+                print(f"[+] Connected to ZAP {version}")
+                return zap
         except Exception as e:
-            print(f"[!] Waiting for ZAP... ({i+1}/{retries}) {e}")
-            time.sleep(delay)
-    raise SystemExit("[-] Could not connect to ZAP after multiple attempts.")
+            print(f"[~] Waiting for ZAP... ({i+1}/10) {e}")
+            time.sleep(3)
 
-# ========= Optional auth (unchanged) =========
-def apply_auth(zap):
+    raise SystemExit(f"[-] Could not connect to ZAP at {ZAP_BASE}.")
+
+def _apply_auth(zap):
     try:
         if AUTH_HEADER:
             name, value = AUTH_HEADER.split(":", 1)
             zap.replacer.add_rule(
-                description="AuthHeader",
-                enabled=True,
-                matchtype="REQ_HEADER",
-                matchregex=False,
-                matchstring=name.strip(),
-                replacement=value.strip(),
-                initiators="",
-                apikey=API_KEY
+                description="AuthHeader", enabled=True,
+                matchtype="REQ_HEADER", matchregex=False,
+                matchstring=name.strip(), replacement=value.strip(),
+                initiators="", apikey=ZAP_API_KEY,
             )
             print(f"[+] Auth header applied: {name.strip()}")
         if AUTH_COOKIE:
             zap.replacer.add_rule(
-                description="AuthCookie",
-                enabled=True,
-                matchtype="REQ_HEADER",
-                matchregex=False,
-                matchstring="Cookie",
-                replacement=AUTH_COOKIE,
-                initiators="",
-                apikey=API_KEY
+                description="AuthCookie", enabled=True,
+                matchtype="REQ_HEADER", matchregex=False,
+                matchstring="Cookie", replacement=AUTH_COOKIE,
+                initiators="", apikey=ZAP_API_KEY,
             )
             print("[+] Auth cookie applied.")
     except Exception as e:
-        print(f"[!] Failed to configure auth: {e}")
+        print(f"[~] Auth config skipped/failed: {e}")
 
-# ========= Crawl & attack =========
-def access_target(zap, target):
-    print(f"[+] Accessing {target}")
-    try:
-        zap.urlopen(target)
-    except Exception:
-        pass
-    time.sleep(2)
-
-def seed_high_value_paths(zap, base):
-    """
-    Hit common SPA routes and REST endpoints that exercise OWASP categories:
-    - A03 Injection (search, feedback, reviews)
-    - A07 Auth (login)
-    - A01 Access control (admin, basket, account)
-    """
+def _seed(zap, base):
     seeds = [
-        "/#/login",
-        "/#/search",
-        "/#/contact",
-        "/#/basket",
-        "/#/account",
-        "/#/administration",
-        "/#/order-history",
-        "/#/register",
-        "/#/about",
-        "/#/score-board",  # hidden but present
-        "/rest/products/search?q=test",
-        "/rest/products/1/reviews",
-        "/api/Feedbacks/",
-        "/rest/user/login",
+        "/#/login", "/#/register", "/#/account", "/#/basket",
+        "/#/search", "/#/contact", "/#/order-history",
+        "/#/administration", "/#/score-board",
+        "/rest/products/search?q=test", "/rest/products/1/reviews",
+        "/api/Feedbacks/", "/rest/user/login",
     ]
     for p in seeds:
-        url = f"{base}{p}"
         try:
-            zap.urlopen(url)
+            zap.urlopen(f"{base}{p}")
         except Exception:
             pass
     time.sleep(1)
 
-def tune_spider(zap):
-    try:
-        zap.spider.set_option_max_depth(10)
-        zap.spider.set_option_thread_count(5)
-        zap.spider.set_option_max_children(10)
-    except Exception:
-        pass
-
-def spider_target(zap, target):
-    tune_spider(zap)
-    print("[+] Spidering target...")
-    scan_id = zap.spider.scan(target, recurse=True)
-    while int(zap.spider.status(scan_id)) < 100:
-        print(f"\rSpider progress: {zap.spider.status(scan_id)}%", end="")
-        sys.stdout.flush()
-        time.sleep(2)
-    print("\n[+] Spider completed.")
-
-def ajax_spider(zap, target):
-    # fix: status is a property on some ZAP builds (not a callable)
-    try:
-        print("[+] Running AJAX spider...")
-        zap.ajaxSpider.scan(target)
-        while True:
-            status = zap.ajaxSpider.status
-            print(f"\rAJAX spider status: {status}", end="")
-            if str(status).lower() == "stopped":
-                break
-            time.sleep(3)
-        print("\n[+] AJAX spider completed.")
-    except Exception as e:
-        print(f"[!] AJAX spider skipped or failed: {e}")
-
-def wait_for_passive_scan(zap):
-    """Ensure passive scanner has processed all records (A05, headers, info leaks)."""
-    try:
-        while True:
-            remaining = int(zap.pscan.records_to_scan)
-            print(f"\rPassive scan queue: {remaining}", end="")
-            if remaining == 0:
-                break
-            time.sleep(2)
-        print("\n[+] Passive scan processing complete.")
-    except Exception:
-        # older ZAP versions may not expose this; safe to continue
-        print("\n[~] Passive scan queue not available; continuing.")
-
-def active_scan(zap, target):
-    print(f"[+] Starting active scan on: {target}")
-    # recurse=True to go after everything found by the spiders
-    scan_id = zap.ascan.scan(url=target, recurse=True, inscopeonly=False)
-    while int(zap.ascan.status(scan_id)) < 100:
-        print(f"\rActive scan progress: {zap.ascan.status(scan_id)}%", end="")
-        sys.stdout.flush()
-        time.sleep(5)
-    print("\n[+] Active scan complete.")
-
-# ========= Reporting (unchanged) =========
 def _normalize_int(val):
     try:
-        if val is None:
-            return None
         s = str(val).strip()
-        if s.isdigit():
-            return int(s)
+        return int(s) if s.isdigit() else None
     except Exception:
-        pass
-    return None
+        return None
 
-def build_cwe_summary(alerts):
+def _build_cwe_summary(alerts):
     found_cwes = set()
     cwe_to_alerts = defaultdict(list)
     for a in alerts:
-        cwe_raw = a.get("cweid") or a.get("cweId") or a.get("cwe")
-        cwe = _normalize_int(cwe_raw)
+        cwe = _normalize_int(a.get("cweid") or a.get("cweId") or a.get("cwe"))
         if cwe is not None:
             found_cwes.add(cwe)
             cwe_to_alerts[cwe].append({
@@ -219,50 +142,51 @@ def build_cwe_summary(alerts):
                 "url": a.get("url"),
                 "evidence": a.get("evidence"),
             })
-    expected_set = set(ALL_CWES)
-    not_found_cwes = sorted(expected_set - found_cwes)
-    found_cwes_sorted = sorted(found_cwes)
+    expected = set(ALL_CWES)
+    not_found = sorted(expected - found_cwes)
     summary = {
         "total_cwes_expected": len(ALL_CWES),
-        "found_count": len(found_cwes_sorted),
-        "not_found_count": len(not_found_cwes),
-        "found_cwes": found_cwes_sorted,
-        "not_found_cwes": not_found_cwes,
+        "found_count": len(found_cwes),
+        "not_found_count": len(not_found),
+        "found_cwes": sorted(found_cwes),
+        "not_found_cwes": not_found,
         "details": {
             str(cid): {
                 "cwe_id": cid,
                 "cwe_name": CWE_NAME_MAP.get(cid),
                 "alert_count": len(cwe_to_alerts[cid]),
                 "alerts": cwe_to_alerts[cid],
-            } for cid in found_cwes_sorted
+            } for cid in sorted(found_cwes)
         }
     }
     Path(CWE_SUMMARY_FILE).write_text(json.dumps(summary, indent=2))
 
-def export_alerts(zap):
+def _export(zap):
     alerts = zap.core.alerts(baseurl=TARGET)
-    with open(REPORT_FILE, "w") as f:
-        json.dump({"alerts": alerts}, f, indent=2)
-    build_cwe_summary(alerts)
+    Path(REPORT_FILE).write_text(json.dumps({"alerts": alerts}, indent=2))
+    _build_cwe_summary(alerts)
 
-# ========= Main =========
-def run_zap_scan():
-    setup_environment()
-    zap = initialize_zap()
-    wait_for_zap(zap)
-    apply_auth(zap)
+def main():
+    _mkdirs()
+    zap = _zap_client()
+    _apply_auth(zap)
 
-    access_target(zap, TARGET)
-    # Seed key pages & REST calls so spiders/AScan hit injection/auth surfaces
-    seed_high_value_paths(zap, TARGET)
+    print(f"[+] Accessing {TARGET}")
+    try:
+        zap.urlopen(TARGET)
+    except Exception:
+        pass
+    time.sleep(2)
+    _seed(zap, TARGET)
 
-    spider_target(zap, TARGET)
-    ajax_spider(zap, TARGET)
-    active_scan(zap, TARGET)
-    wait_for_passive_scan(zap)
-
-    export_alerts(zap)
-    print("[+] Scan complete. Reports available in 'reports/' directory.")
+    # --- Full DAST flow ---
+    run_spider(zap, TARGET)
+    run_ajax(zap, TARGET)
+    run_active(zap, TARGET)
+    run_passive(zap, TARGET)
+    
+    _export(zap)
+    print("[+] ZAP scan complete. Reports in 'reports/'.")
 
 if __name__ == "__main__":
-    run_zap_scan()
+    main()

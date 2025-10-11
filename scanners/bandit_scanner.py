@@ -1,5 +1,5 @@
 """
-bandit_scanner.py
+bandit_scanner.py derived from https://github.com/PyCQA/bandit/blob/main/bandit/core/config.py
 
 Automated static code analysis using Bandit for secure coding checks.
 

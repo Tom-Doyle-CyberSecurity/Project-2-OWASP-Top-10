@@ -46,7 +46,7 @@ fi
 # - TARGET_URL must be resolvable by the ZAP CONTAINER.
 #   Use the compose service name for container-to-container traffic.
 export TARGET_URL="http://juice-shop:3000"
-export ZAP_API_BASE="http://localhost:8080"
+export ZAP_API_BASE="http://127.0.0.1:8080"
 
 echo "Bandit..."
 python3 scanners/bandit_scanner.py

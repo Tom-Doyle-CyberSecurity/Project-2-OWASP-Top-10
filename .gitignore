@@ -9,3 +9,4 @@ docker-compose.override.yml
 node_modules/
 dist/
 reports/
+vars.py
