@@ -116,7 +116,7 @@ Component Technology Used
 
  - Once automation had been completed through GitHub actions, a styled, colour coded HTML table was produced by the program listing all the vulnerabilities and their severity by colour. Around ~130+ findings were reported as a result
 
-![OWASP Top 10 Findings Report](assets/owasp-top-10-findings-report.png)
+![OWASP Top 10 Findings Report](assets/owasp-findings-report.png)
 
 ## Challenges & Lessons Learned
 
