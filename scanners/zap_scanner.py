@@ -11,6 +11,7 @@ from collections import defaultdict
 from zapv2 import ZAPv2
 from urllib.parse import urlparse
 
+# Loads ZAP API key from environment variable or untracked vars.py file.
 def _load_api_key():
     """Safely load ZAP API key from env or untracked vars.py."""
     key = os.getenv("ZAP_API_KEY")
@@ -85,6 +86,9 @@ def _zap_client():
 
     raise SystemExit(f"[-] Could not connect to ZAP at {ZAP_BASE}.")
 
+# Apply authentication headers and cookies to all ZAP HTTP requests. This function configures ZAP's replacer rules to inject an authorization header (API token)
+# and/or session cookie into every outgoing request during scans. It ensures that authenticated scanning against protected endpoints if AUTH_HEADER or AUTH_COOKIE
+# are defined. If configuration fails, or is skipped, it prints a warning without halting execution.
 def _apply_auth(zap):
     try:
         if AUTH_HEADER:
@@ -107,6 +111,10 @@ def _apply_auth(zap):
     except Exception as e:
         print(f"[~] Auth config skipped/failed: {e}")
 
+# Preload common application endpoints into ZAP's crawler to ensure initial coverage at the start. This function "seeds" ZAP with a set of
+# known URLs (Login, Register, Account, Basket, Search, Contact, Order History, Administration, Score Board, Product Search, Product Reviews, 
+# Feedback API, User Login API) to help discover pages faster before running spiders or scans. Each URL is opened via zap.urlopen(), to warm up 
+# the session and populate the site tree. If any request fails, it is safely ignored. A short delay allows ZAP to process requests.
 def _seed(zap, base):
     seeds = [
         "/#/login", "/#/register", "/#/account", "/#/basket",
@@ -122,6 +130,8 @@ def _seed(zap, base):
             pass
     time.sleep(1)
 
+# Converts a value to an integer if possible, returning none if conversion fails. Strips whitespace and checks that the value contains only digits before casting.
+# Used to normalize input fields (CWE IDs) that may be strings, numbers, or malformed data. Prevents crashes during JSON parsing or data aggregation when non-numeric values are encountered.
 def _normalize_int(val):
     try:
         s = str(val).strip()
@@ -129,6 +139,12 @@ def _normalize_int(val):
     except Exception:
         return None
 
+# Build a comprehensive CWE summary report from Bandit alerts. Group all alerts by their associated CWE ID and records key details (alert name, risk, URL, evidence).
+# Tracks which CWEs were found vs. expected (using ALL_CWES) to show overall coverage. Produces a structured summary containing:
+# - Total expected CWEs
+# - List of found and missing CWE IDs
+# - Detailed mappings of each CWE - alerts triggering it.
+# Finally, writes the summary as formatted JSON to the CWE_SUMMARY_FILE for later reporting or dashboard use.
 def _build_cwe_summary(alerts):
     found_cwes = set()
     cwe_to_alerts = defaultdict(list)
@@ -161,11 +177,19 @@ def _build_cwe_summary(alerts):
     }
     Path(CWE_SUMMARY_FILE).write_text(json.dumps(summary, indent=2))
 
+# Export all collected ZAP alerts and generate a corresponding CWE summary report
+# Retrieves the current scan's alert data from the ZAP API for the target URL
+# Then saves it as a formatted JSON to REPORT_FILE, and then calls _build_cwe_summary()
+# to aggregate the alerts by CWE for detailed analysis and dashboard generation.
 def _export(zap):
     alerts = zap.core.alerts(baseurl=TARGET)
     Path(REPORT_FILE).write_text(json.dumps({"alerts": alerts}, indent=2))
     _build_cwe_summary(alerts)
 
+# ---- Main orchestration flow ----
+# Runs the full ZAP DAST process: spider, AJAX spider, active scan, passive scan wait
+# Sets up the ZAP client, applies authentication if configured, seeds initial URLs.
+# Exports reports at the end of the scan.
 def main():
     _mkdirs()
     zap = _zap_client()
