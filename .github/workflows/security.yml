@@ -8,6 +8,10 @@ on:
 
 jobs:
   security-scan:
+    permissions: 
+      contents: read
+      issues: write
+      
     runs-on: ubuntu-latest
 
     steps:

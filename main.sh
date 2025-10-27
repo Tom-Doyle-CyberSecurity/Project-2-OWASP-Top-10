@@ -36,7 +36,7 @@ done
 if [ "$ZAP_OK" -ne 1 ]; then
   echo "ZAP did not become ready in time"
   echo "---- last 150 lines of ZAP logs ----"
-  # Use your compose service name here (e.g., 'zaproxy'); avoids hard-coded container ids
+  # Use compose service name here ('zaproxy'); avoids hard-coded container ids
   docker compose logs --tail=150 zaproxy || true
   exit 1
 fi
