@@ -1,3 +1,12 @@
+# Docker Compose file to run OWASP Juice Shop and ZAP Proxy
+# Built upon from the following repositories:
+#    - https://github.com/dennisMeeQ/juice-shop/blob/master/docker-compose.yml?
+#    - https://github.com/EmmaPreston/zap-juice/blob/master/docker-compose.yml
+#    - https://gist.github.com/ritesh/2fcd9fd32995ffeb30f1?
+#
+# Additonally, health checks, api key usage and Daemon mode have been integrated from:
+#    - https://www.cyberly.org/en/how-do-you-configure-owasp-zap-to-run-in-daemon-mode/index.html?
+
 version: "3"
 
 services:
