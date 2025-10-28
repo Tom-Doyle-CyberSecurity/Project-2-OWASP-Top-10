@@ -27,12 +27,12 @@ BANDIT_HTML_DASH = "bandit-report.html"
 
 # CWE summary inputs/outputs (ZAP)
 ZAP_CWE_JSON = "zap_cwe_summary.json"      # written by zap_scanner.py
-ZAP_CWE_HTML = "zap-cwe-summary.html"      # human-friendly CWE table we generate
+ZAP_CWE_HTML = "zap-cwe-summary.html"      # human-friendly CWE table that is generated
 
 # Bandit CWE-styled table output (to match ZAP table look/feel)
 BANDIT_HTML_STYLED = "bandit-cwe-summary.html"
 
-# Our outputs
+# Outputs
 INDEX         = os.path.join(RD, "index.html")    # dashboard
 FINDINGS_JSON = os.path.join(RD, "findings.json") # machine-friendly counts
 
@@ -54,6 +54,10 @@ except Exception:
 
 
 # ---------- Utils ----------
+# Loads and parses a JSON file from disk, returning None on failure.
+# Opens the specified file using UTF-8 encoding and attempts to deserialize its contents with json.load()
+# If the file is missing, unreadable, or contains invalid JSON, the function quietly returns None.
+# Used throughout the project to safely handle optional or missing report inputs.
 def jload(path):
     try:
         with open(path, encoding="utf-8") as f:
@@ -61,6 +65,10 @@ def jload(path):
     except Exception:
         return None
 
+# Safely copy a source file to a destination directory with error handling.
+# Verifies that the source path exists before copying, created the destination directory if needed, and preserves file metadata using shutil.copy2().
+# Returns True on success, False on any failure.
+# Used to duplicate generated reports (e.g., ZAP/Bandit HTML reports) into the final reports directory without breaking the workflow if a file is missing or inaccessible.
 def safe_copy(src, dst_dir, dst_name):
     if not src: return False
     if not os.path.exists(src): return False
@@ -72,6 +80,11 @@ def safe_copy(src, dst_dir, dst_name):
     except Exception:
         return False
 
+# Standardize risk or severity labels across different scanner outputs.
+# Accepts various string forms ("HIGH", "Info," "Informational") and normalizes them to a consistent set:
+# "High", "Medium", "Low", "Informational".
+# Returns None if the input cannot be mapped to a known category. 
+# Used to unify severity ratings from ZAP, Bandit, and other tools before reporting.
 def _normalize_risk(r):
     if r is None: return None
     s = str(r).strip().lower()
@@ -82,6 +95,12 @@ def _normalize_risk(r):
     return None
 
 # ---------- Summaries for dashboard pills ----------
+# Generate a summarized count of ZAP alerts by severity level.
+# Supports both modern and legacy ZAP JSON formats:
+# - {"alerts": [...]} (used by zap_scanner.py)
+# - {"site": [{"alerts": [...]}]} (older ZAP schema)
+# Extracts all alerts, normalizes their risk levels, via _normalize_risk(), and tallies totals for each category: High, Medium, Low, Informational.
+# Returns a dictionary of severity counts for reporting and dashboard metrics.
 def zap_summary(data):
     """
     Summarise ZAP JSON into totals (High/Medium/Low/Informational).
@@ -109,6 +128,10 @@ def zap_summary(data):
 
     return totals
 
+# Generate a summarized count of Bandit findings by severity level.
+# Parses Bandit's JSON output, (list of results) and tallies occurrences of each severity: HIGH, MEDIUM, LOW.
+# Falls back to "LOW" if a result's severity field is missing or invalid.
+# Returns a dictionary of severity counts used for dashboard statistics and JSON report aggregation.
 def bandit_summary(data):
     """Summarise Bandit JSON into totals (HIGH/MEDIUM/LOW)."""
     totals = {"HIGH":0, "MEDIUM":0, "LOW":0}
@@ -121,6 +144,10 @@ def bandit_summary(data):
     return totals
 
 # ---------- Description helper (shared) ----------
+# Generate a short, human-readable description for a CWE based on its most frequent alert names.
+# Analyzes the provided alerts, counts how often each alert name appears, and returns the top_k (default 2) joined as a concise summary string.
+# Falls back to the first alert name or an em dash ("—") if none exist.
+# Used in CWE summaries and dashboards to provide a quick contextual label for grouping findings.
 def _derive_description(alerts, top_k=2):
     """
     Derive a concise description for a CWE by taking the most frequent alert names.
@@ -135,6 +162,11 @@ def _derive_description(alerts, top_k=2):
     return ", ".join(n for n, _ in counts)
 
 # ---------- ZAP CWE HTML ----------
+# Build an HTML summary table of ZAP findings grouped by CWE.
+# Reads the parsed CWE summary JSON (reports/zap_cwe_summary.json), computes per-severity counts (High, Medium, Low, Informational) for each CWE, and renders them into a compact HTML table.
+# Each row includes: CWE ID, CWE Name, derived description, individual severity counts, and total findings.
+# If no data is available, returns a minimal HTML page stating that no summary exists.
+# Used by the report generator to produce a zap-cwe-summary.html for the dashboard view.
 def build_zap_cwe_html():
     """
     Reads reports/zap_cwe_summary.json and renders a compact HTML table:
@@ -184,6 +216,13 @@ def build_zap_cwe_html():
     )
 
 # ---------- Bandit: build a CWE-grouped structure ----------
+# Convert Bandit scan results into a normalized CWE summary structure consistent with ZAP reports.
+# Groups findings by CWE ID when available, or falls back to Bandit's test ID if no CWE mapping exists.
+# Each CWE (or fallback bucket) entry includes:
+# - cwe_id / bucket identifier
+# - cwe_name (resolved CWE title or Bandit test name)
+# - alerts: list of associated findings with name and normalized risk level
+# Returns a dictionary formatted as {"details": {...}} for use in unified reporting and HTML generation.
 def bandit_cwe_summary_structure(data):
     """
     Convert Bandit results into a ZAP-like CWE summary structure:
@@ -222,20 +261,23 @@ def bandit_cwe_summary_structure(data):
 
     return {"details": details}
 
-
+# Normalise Bandit severity levels to standardised risk strings ("High", "Medium", "Low")
+# Converts Bandit's raw severity (e.g., "HIGH", "MEDIUM", "LOW") to consistent format
 def normalize_risk(severity):
     """Normalize Bandit severity levels."""
     sev_raw = (severity or "LOW").upper()
     return {"HIGH": "High", "MEDIUM": "Medium", "LOW": "Low"}.get(sev_raw, "Low")
 
-
+# Resolve Bandit test ID to a corresponding CWE ID and create a bucket key
+# If the CWE mapping exists, the bucket key uses the CWE ID. Otherwise, it falls back to a test-based identifier.
 def resolve_cwe_and_bucket(test_id):
     """Determine the CWE ID and bucket key."""
     cwe_id = BANDIT_TEST_TO_CWE.get(test_id)
     bucket_key = str(cwe_id) if cwe_id is not None else f"TEST:{test_id or 'UNKNOWN'}"
     return cwe_id, bucket_key
 
-
+# Return the human-readable CWE name if available, otherwise fallback to the Bandit test name
+# Uses CWE_NAME_MAP to translate the CWE IDs into descriptive names for reporting.
 def resolve_cwe_name(cwe_id, test_name):
     """Resolve CWE name or fallback to test name."""
     if isinstance(cwe_id, int) or (isinstance(cwe_id, str) and cwe_id.isdigit()):
@@ -243,6 +285,12 @@ def resolve_cwe_name(cwe_id, test_name):
     return test_name
 
 # ---------- Bandit CWE HTML (matches ZAP table look) ----------
+# Build an HTML summary table of Bandit findings grouped by CWE or rule bucket.
+# Reads Bandit's JSON output (reports/bandit_report.json), converts it into a ZAP-compatible CWE summary structure using bandit_cwe_summary_structure(), and aggregates severity counts
+# (High, Medium, Low, Informational) for each CWE or Bandit rule.
+# Each table row includes: CWE ID, Name, derived description, severity breakdowns, and total findings.
+# If no data is found, returns a minimal HTML page indicating no results exist.
+# Used to generate bandit-cwe-summary.html, ensuring visual and structural consistency with ZAP's CWE table.
 def build_bandit_cwe_html():
     """
     Reads reports/bandit_report.json and renders an HTML table that MATCHES the ZAP CWE table:
@@ -294,6 +342,10 @@ def build_bandit_cwe_html():
     )
 
 # ---------- Shared table chrome (identical look for ZAP/Bandit) ----------
+# Generate a complete HTML document containing a styled table for CWE summaries.
+# Accepts a title, subtitle, and pre-rendered table rows (rows_html), and returns a full HTML page string.
+# The layout includes consistent typography, responsive sizing, and color-coded header cells for severity levels (High, Medium, Low, Informational) to match the report dashboard theme.
+# Used by both built_zap_cwe_html() and build_bandit_cwe_html() to render their output as uniform tables.
 def _tabular_html(title, subtitle, rows_html):
     return f"""<!doctype html>
 <html lang="en">
@@ -341,6 +393,10 @@ def _tabular_html(title, subtitle, rows_html):
 </html>"""
 
 # ---------- Dashboard builder ----------
+# Render a small, styled HTML "pill" element displaying a label and numeric value.
+# Used in the dashboard header to visually highlight summary metrics such as total High, Medium, Low, and Informational findings.
+# Each pill consists of a label (e.g., "High") and a count (e.g., "3"), styled using a CSS class (cls) for color coding.
+# Apply color coding consistent with dashboard theme and severity levels.
 def _pill(label, value, cls):
     return f'''
       <div class="pill {cls}">
@@ -348,8 +404,14 @@ def _pill(label, value, cls):
         <span class="pill-count">{html.escape(str(value))}</span>
       </div>'''
 
+# Build the main index.html dashboard summarizing ZAP and Bandit findings.
+# Generates a visually styled HTML landing page showing total counts of High, Medium, Low, and Informational findings from both dynamic (ZAP) and
+# static (Bandit) analysis scans. 
+# Includes "pill" components for quick severity visualization and buttons linking to the detailed CWE summary tables (zap-cwe-summary.html and bandit-cwe-summary.html).
+# Automatically handles cases where report files are missing by displaying "No report found" notices.
+# The final document serves as the unified entry point for all OWASP Top 10 scanner results.
 def build_index(z_counts, b_counts, now_utc_str):
-    # Buttons link to our styled tables
+    # Buttons link to styled tables
     zap_cwe_path = os.path.join(".", ZAP_CWE_HTML)
     bandit_path  = os.path.join(".", BANDIT_HTML_STYLED)
 
@@ -449,6 +511,20 @@ def build_index(z_counts, b_counts, now_utc_str):
     return doc
 
 # ---------- Main ----------
+# Main orchestration function for generating all OWASP Top 10 scanner reports.
+# Performs end-to-end aggregation of ZAP (DAST) and Bandit (SAST) outputs into unified artifacts.
+# Steps:
+# 1. Ensures the reports directory exists.
+# 2. Loads raw ZAP an Bandit JSON reports (underscore filenames).
+# 3. Computes severity summaries for each tool (used in dashboard "pill" metrics).
+# 4. Generates findings.json, a lightweight summary for automation and CI integration
+# 5. Copies Legacy raw HTML reports (underscore -> dashed filenames) for backward compatibility.
+# 6. Builds and writes:
+#    - zap-cwe-summary.html (ZAP CWE breakdown)
+#    - bandit-cwe-summary.html (Bandit CWE breakdown in matching format)
+#    - index.html (main dashboard summarizing all results).
+# 7. Prints output file paths for verification and CI/CD logging.
+# This function acts as the final step in the scanning pipeline, consolidating static and dynamic analysis findings into human-readable and machine-consumable reports.
 def main():
     os.makedirs(RD, exist_ok=True)
 
