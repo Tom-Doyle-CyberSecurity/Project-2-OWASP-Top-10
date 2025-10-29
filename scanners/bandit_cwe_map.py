@@ -1,5 +1,7 @@
 # scanners/bandit_cwe_map.py
 # Map Bandit rule IDs to CWE IDs. Expand as needed.
+# Rule IDs from https://bandit.readthedocs.io/en/latest/plugins/index.html#complete-test-plugin-listing
+
 BANDIT_TEST_TO_CWE = {
     "B105": 259,   # Hardcoded password
     "B303": 327,   # md5
