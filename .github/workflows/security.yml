@@ -1,3 +1,14 @@
+# Security Workflows
+# Created to ensure code severity scanners run correctly
+# Built from the following resources:
+#   - https://docs.github.com/en/actions/tutorials/authenticate-with-github_token
+#   - https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax
+#   - https://docs.github.com/en/actions/how-tos/write-workflows/choose-what-workflows-do/use-github-cli
+#   - https://github.com/zaproxy/action-full-scan
+#   - https://www.zaproxy.org/blog/2020-04-09-automate-security-testing-with-zap-and-github-actions/
+#   - https://www.zaproxy.org/docs/desktop/start/features/api/
+#   - https://bandit.readthedocs.io/en/latest/formatters/json.html
+
 name: Security Workflows
 
 on:
