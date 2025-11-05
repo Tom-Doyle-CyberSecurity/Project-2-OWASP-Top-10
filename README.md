@@ -12,7 +12,7 @@ This project is an automated **DevSecOps security lab** that simulates a secure 
 
 ## Project Architecture
 
-![Owasp Top 10 Diagram](assets/ZAP-FULL-DAST-diagram.png)
+![Owasp Top 10 Diagram](assets/OWASP-ZAP-DAST-FULL-SCAN.png)
 
 Component Technology Used
 - **Vulnerable target**        -> OWASP Juice Shop (Docker)
